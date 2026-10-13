@@ -7,6 +7,7 @@ import { SESSION_COOKIE, checkPassword, createSession } from '@/lib/auth';
 import { requireAuth } from '@/lib/session';
 import { RateLimiter, clientIp } from '@/lib/rate-limit';
 import * as store from '@/lib/db';
+import { pingInstallation } from '@/lib/pinger';
 
 const loginAttempts = new RateLimiter(10, 15 * 60_000);
 
@@ -98,4 +99,13 @@ export async function removeClient(form: FormData): Promise<void> {
   await store.deleteClient(id(form));
   revalidatePath('/', 'layout');
   redirect('/clients');
+}
+
+/** Staff pressed Ping now on an installation page. */
+export async function pingNow(form: FormData): Promise<void> {
+  await requireAuth();
+  const installationId = id(form);
+  const outcome = await pingInstallation(installationId, 'manual');
+  revalidatePath(`/installations/${installationId}`);
+  redirect(`/installations/${installationId}?${outcome.pinged ? 'pinged=1' : `ping_skipped=${encodeURIComponent(outcome.reason)}`}#callback`);
 }

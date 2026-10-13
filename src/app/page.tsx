@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/session';
 import { listClients, listInstallations, listPlugins } from '@/lib/db';
 import { latestReleases, repoUrl } from '@/lib/releases';
 import { versionStatus } from '@/lib/semver';
-import { EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
+import { CallbackStatus, EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,10 +22,11 @@ export default async function InstallationsPage({ searchParams }: { searchParams
   const status = one(sp.status);
   const includeLocal = one(sp.local) === '1';
   const key = one(sp.key);
+  const callback = one(sp.callback);
 
   const clientId = client === 'none' ? 'none' : Number(client) > 0 ? Number(client) : undefined;
   const [all, plugins, clients] = await Promise.all([
-    listInstallations({ q, plugin: plugin || undefined, clientId, includeLocal, keyStatus: key || undefined }),
+    listInstallations({ q, plugin: plugin || undefined, clientId, includeLocal, keyStatus: key || undefined, callback: callback || undefined }),
     listPlugins(),
     listClients(),
   ]);
@@ -38,6 +39,7 @@ export default async function InstallationsPage({ searchParams }: { searchParams
     { n: withStatus.length, l: 'installations' },
     { n: withStatus.filter((i) => i.status === 'outdated').length, l: 'with a plugin update available' },
     { n: withStatus.filter((i) => i.api_key_status && i.api_key_status !== 'ok').length, l: 'with an API key problem' },
+    { n: withStatus.filter((i) => i.callback_status && i.callback_status !== 'reachable').length, l: 'not reachable from the internet' },
     { n: withStatus.filter((i) => !i.client_id).length, l: 'not mapped to a client' },
     { n: withStatus.filter((i) => new Date(i.last_seen).getTime() >= monthAgo).length, l: 'reported in the last 30 days' },
   ];
@@ -89,11 +91,17 @@ export default async function InstallationsPage({ searchParams }: { searchParams
           <option value="missing">No key</option>
           <option value="unchecked">Not checked</option>
         </select>
+        <select name="callback" defaultValue={callback} aria-label="Reachability">
+          <option value="">Any reachability</option>
+          <option value="problem">Not reachable</option>
+          <option value="reachable">Reachable</option>
+          <option value="none">No endpoint</option>
+        </select>
         <label className="check">
           <input type="checkbox" name="local" value="1" defaultChecked={includeLocal} /> Show local and test hosts
         </label>
         <button type="submit">Filter</button>
-        {(q || plugin || client || status || key || includeLocal) && (
+        {(q || plugin || client || status || key || callback || includeLocal) && (
           <Link className="link" href="/">
             Reset
           </Link>
@@ -103,7 +111,7 @@ export default async function InstallationsPage({ searchParams }: { searchParams
       <div className="card table-wrap">
         {rows.length === 0 ? (
           <p className="empty">
-            {all.length === 0 && !q && !plugin && !client && !key
+            {all.length === 0 && !q && !plugin && !client && !key && !callback
               ? 'No reports yet. Installations appear here once a plugin saves its settings or is updated.'
               : 'No installation matches these filters.'}
           </p>
@@ -116,8 +124,8 @@ export default async function InstallationsPage({ searchParams }: { searchParams
                 <th>Plugin</th>
                 <th>Plugin version</th>
                 <th>API key</th>
+                <th>Reachable</th>
                 <th>System</th>
-                <th>Runtime</th>
                 <th>Last report</th>
               </tr>
             </thead>
@@ -156,10 +164,19 @@ export default async function InstallationsPage({ searchParams }: { searchParams
                     />
                   </td>
                   <td>
-                    <NameVersion name={i.system} version={i.system_version} />
+                    <CallbackStatus
+                      url={i.callback_url}
+                      status={i.callback_status}
+                      ms={i.callback_ms}
+                      checkedAt={i.callback_checked_at}
+                      detail={i.callback_detail}
+                    />
                   </td>
-                  <td>
-                    <NameVersion name={i.runtime} version={i.runtime_version} />
+                  <td className="stack">
+                    <NameVersion name={i.system} version={i.system_version} />
+                    <div className="muted small">
+                      <NameVersion name={i.runtime} version={i.runtime_version} />
+                    </div>
                   </td>
                   <td title={formatDate(i.last_seen)} className="stack">
                     {ago(i.last_seen)}

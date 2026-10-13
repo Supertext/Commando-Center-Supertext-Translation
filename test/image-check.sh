@@ -20,6 +20,11 @@ start() {
   echo "the center did not become healthy"; return 1
 }
 
+# The test-only ping switches must never be baked into the image.
+if docker image inspect commando --format '{{json .Config.Env}}' | grep -q 'COMMANDO_PING_'; then
+  echo "the image sets a COMMANDO_PING_* test switch"; exit 1
+fi
+
 start
 code=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' "http://127.0.0.1:$PORT/")
 [[ "$code" == "307 http://127.0.0.1:$PORT/login" ]] || { echo "expected a redirect to /login, got: $code"; exit 1; }

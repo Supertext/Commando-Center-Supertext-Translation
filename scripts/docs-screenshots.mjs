@@ -1,8 +1,11 @@
 // Takes the screenshots in docs/images/ from a running center with an empty database.
 //
-//   1. Start the center against a fresh database, pointing GitHub release lookups at the
-//      stand-in this script starts on port 8766:
-//        GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
+//   1. Start the center against a fresh database, pointing GitHub release lookups and the
+//      sample sites' ping endpoints at the stand-in this script starts on port 8766
+//      (COMMANDO_PING_* are test-only switches, never set them in production):
+//        GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PING_ALLOW_PRIVATE=1 \
+//        COMMANDO_PING_HOSTS="$(node scripts/docs-screenshots.mjs --ping-hosts)" \
+//        COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
 //   2. COMMANDO_URL=http://127.0.0.1:3000 COMMANDO_PASSWORD=… npm run docs:screenshots
 //
 // It sends sample reports for invented sites (no customer data), maps two of them to
@@ -10,6 +13,19 @@
 import http from 'node:http';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright';
+
+// The sample sites' ping endpoints all go to the stand-in, except one that "is behind a firewall".
+const PING_HOSTS = {
+  'www.alpenblick-hotels.example.ch': '127.0.0.1:8766',
+  'staging.alpenblick-hotels.example.ch': '127.0.0.1:8766',
+  'www.bergbahnen-muster.example.ch': '127.0.0.1:8766',
+  'shop.velo-beispiel.example.com': '127.0.0.1:8766',
+  'www.kanton-musterland.example.ch': '127.0.0.1:1',
+};
+if (process.argv.includes('--ping-hosts')) {
+  console.log(Object.entries(PING_HOSTS).map(([h, a]) => `${h}=${a}`).join(','));
+  process.exit(0);
+}
 
 const BASE = (process.env.COMMANDO_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
 const PASSWORD = process.env.COMMANDO_PASSWORD;
@@ -26,6 +42,22 @@ const RELEASES = {
 };
 const standIn = http
   .createServer((req, res) => {
+    // Ping endpoints of the sample sites, by Host header.
+    const host = (req.headers.host ?? '').split(':')[0];
+    if (host !== '127.0.0.1' && host in PING_HOSTS) {
+      const u = new URL(req.url ?? '/', 'http://x');
+      if (host.startsWith('staging.')) {
+        res.writeHead(302, { Location: '/wp-login.php' }); // staging behind a login
+        return res.end();
+      }
+      if (host.startsWith('shop.')) {
+        res.writeHead(200, { 'Content-Type': 'text/html' }); // a maintenance page in front of the shop
+        return res.end('<html><body>We are back soon.</body></html>');
+      }
+      const plugin = host.startsWith('www.alpenblick') ? 'supertext-wordpress-polylang' : 'Typo3-Supertext-Translation';
+      res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+      return res.end(JSON.stringify({ ok: true, plugin, challenge: u.searchParams.get('challenge') }));
+    }
     const m = req.url?.match(/^\/repos\/[^/]+\/([^/]+)\/releases/);
     const v = m && RELEASES[decodeURIComponent(m[1])];
     res.writeHead(v ? 200 : 404, { 'Content-Type': 'application/json' });
@@ -44,9 +76,11 @@ async function report(body) {
 
 const ago = (min) => new Date(Date.now() - min * 60_000).toISOString();
 const check = (status, min, extra = {}) => ({ api_key_check: { status, checked_at: ago(min), ...extra } });
+const ping = (url) => ({ callback: { url } });
 const wp = (system, plugin, event, extra = {}) => ({
   event,
   site_url: 'https://www.alpenblick-hotels.example.ch/',
+  ...ping('http://www.alpenblick-hotels.example.ch/wp-json/supertext/v1/ping'),
   plugin: { name: 'supertext-wordpress-polylang', version: plugin },
   system: { name: 'WordPress', version: system },
   runtime: { name: 'PHP', version: '8.3.12' },
@@ -60,12 +94,12 @@ const samples = [
   wp('6.8.3', '2.0.0', 'settings_saved', check('ok', 8, { http_status: 200 })),
   wp('6.9.0', '2.0.0', 'upgraded'),
   wp('6.9.0', '2.1.0', 'upgraded'),
-  { event: 'settings_saved', site_url: 'https://staging.alpenblick-hotels.example.ch', plugin: { name: 'supertext-wordpress-polylang', version: '2.0.0' }, system: { name: 'WordPress', version: '6.8.3' }, runtime: { name: 'PHP', version: '8.2.20' }, api_key_configured: true, ...check('unreachable', 6) },
-  { event: 'upgraded', site_url: 'https://www.bergbahnen-muster.example.ch/', plugin: { name: 'Typo3-Supertext-Translation', version: '0.3.0' }, system: { name: 'TYPO3', version: '13.4.2' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 5, { http_status: 200 }) },
-  { event: 'installed', site_url: 'https://shop.velo-beispiel.example.com/de/', plugin: { name: 'Magento-Supertext-Translation', version: '0.3.0' }, system: { name: 'Magento', version: '2.4.8' }, runtime: { name: 'PHP', version: '8.4.1' }, api_key_configured: false, ...check('missing', 4) },
+  { event: 'settings_saved', site_url: 'https://staging.alpenblick-hotels.example.ch', plugin: { name: 'supertext-wordpress-polylang', version: '2.0.0' }, system: { name: 'WordPress', version: '6.8.3' }, runtime: { name: 'PHP', version: '8.2.20' }, api_key_configured: true, ...check('unreachable', 6), ...ping('http://staging.alpenblick-hotels.example.ch/wp-json/supertext/v1/ping') },
+  { event: 'upgraded', site_url: 'https://www.bergbahnen-muster.example.ch/', plugin: { name: 'Typo3-Supertext-Translation', version: '0.3.0' }, system: { name: 'TYPO3', version: '13.4.2' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 5, { http_status: 200 }), ...ping('http://www.bergbahnen-muster.example.ch/?eID=supertext_ping') },
+  { event: 'installed', site_url: 'https://shop.velo-beispiel.example.com/de/', plugin: { name: 'Magento-Supertext-Translation', version: '0.3.0' }, system: { name: 'Magento', version: '2.4.8' }, runtime: { name: 'PHP', version: '8.4.1' }, api_key_configured: false, ...check('missing', 4), ...ping('http://shop.velo-beispiel.example.com/supertext/ping') },
   { event: 'settings_saved', site_url: 'https://cms.uhrenmanufaktur.example.org', plugin: { name: 'Strapi-Supertext-Translation', version: '0.2.0' }, system: { name: 'Strapi', version: '5.12.0' }, runtime: { name: 'Node.js', version: '22.11.0' }, sdk_version: '0.3.0', api_key_configured: true },
-  { event: 'settings_saved', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 3, { http_status: 200 }) },
-  { event: 'api_key_check', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('invalid', 1, { http_status: 403, error_code: 'API_KEY_REVOKED' }) },
+  { event: 'settings_saved', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 3, { http_status: 200 }), ...ping('http://www.kanton-musterland.example.ch/supertext/ping') },
+  { event: 'api_key_check', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('invalid', 1, { http_status: 403, error_code: 'API_KEY_REVOKED' }), ...ping('http://www.kanton-musterland.example.ch/supertext/ping') },
 ];
 for (const s of samples) await report(s);
 
@@ -98,12 +132,23 @@ await shot('installations.png', { fullPage: true });
 await page.goto(`${BASE}/?status=outdated`);
 await shot('installations-outdated.png', { clip: { x: 0, y: 0, width: 1360, height: 520 } });
 await page.goto(`${BASE}/?key=problem`);
-await shot('installations-key-problems.png', { clip: { x: 0, y: 0, width: 1360, height: 560 } });
+await shot('installations-key-problems.png', { clip: { x: 0, y: 0, width: 1360, height: 640 } });
+await page.goto(`${BASE}/?callback=problem`);
+await shot('installations-not-reachable.png', { clip: { x: 0, y: 0, width: 1360, height: 640 } });
 
 await page.goto(`${BASE}/`);
 await page.click('a:has-text("www.alpenblick-hotels")');
 await page.waitForSelector('h2:has-text("History")');
+await page.waitForLoadState('networkidle');
+await Promise.all([page.waitForURL(/pinged=1/), page.click('button:has-text("Ping now")')]);
 await shot('installation.png', { fullPage: true });
+// Page coordinates (the redirect after Ping now scrolls to #callback).
+const [top, bottom] = await page.evaluate(() => {
+  const y = (el) => el.getBoundingClientRect().top + window.scrollY;
+  const history = [...document.querySelectorAll('h2')].find((h) => h.textContent === 'History');
+  return [y(document.getElementById('callback')), y(history)];
+});
+await shot('installation-reachability.png', { fullPage: true, clip: { x: 0, y: top - 8, width: 1360, height: bottom - top } });
 
 await page.goto(`${BASE}/clients`);
 await shot('clients.png', { clip: { x: 0, y: 0, width: 1360, height: 360 } });

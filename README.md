@@ -5,6 +5,7 @@ Which Supertext plugin version does each customer site run, on which CMS, shop o
 - every installation, identified by its site URL, with the plugin, system and runtime versions it last reported
 - which installations have a plugin update available (compared with the latest GitHub release)
 - whether each site's Supertext API key works: the plugins check it automatically and report the result
+- whether each site is reachable from the internet (for future callbacks): the center pings the plugin's endpoint
 - the history of each installation: when the plugin, the system or the runtime was updated
 - manual mapping of installations to Supertext clients, with notes
 

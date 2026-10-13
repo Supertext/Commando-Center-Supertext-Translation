@@ -32,12 +32,15 @@ All settings are environment variables (Railway service variables).
 | `GITHUB_OWNER` | no | `Supertext` | GitHub owner of the plugin repositories |
 | `COMMANDO_TIMEZONE` | no | `Europe/Zurich` | Time zone for dates in the UI |
 | `PORT` | no | `8080` | Port the server listens on (Railway sets it) |
+| `COMMANDO_PING_ALLOW_PRIVATE`, `COMMANDO_PING_HOSTS` | **never in production** | – | Test-only switches for the callback ping (local test servers, docs screenshots). They let the center connect to private addresses; see the developer guide |
 
 Keep the password only in Railway's variables: never in the repository, in chat or in tickets.
 
 ## What the center receives and stores
 
-Per report: the site URL, the plugin name and version, the system name and version, the runtime name and version, the SDK version, whether an API key is set, the result of the plugin's automatic API key check (status, time, HTTP status and Supertext's error code), and why the report was sent (`installed`, `settings_saved`, `upgraded`, `api_key_check`, `check`). No content, no API keys, no user names or e-mail addresses. The sender's IP address is used for the rate limit in memory and not stored. Clients and notes are entered by Supertext staff.
+Per report: the site URL, the plugin name and version, the system name and version, the runtime name and version, the SDK version, whether an API key is set, the result of the plugin's automatic API key check (status, time, HTTP status and Supertext's error code), the address of the plugin's ping endpoint, and why the report was sent (`installed`, `settings_saved`, `upgraded`, `api_key_check`, `check`). For each callback ping: time, result, HTTP status, latency and a short reason. No content, no API keys, no user names or e-mail addresses. The sender's IP address is used for the rate limit in memory and not stored. Clients and notes are entered by Supertext staff.
+
+The center makes outgoing requests only to the plugins' ping endpoints (on each site's own host, never private addresses) and to the GitHub API. Its outgoing IP address on Railway isn't fixed.
 
 Plugins send reports by default; administrators can turn it off in each plugin's settings (*Send version information to Supertext*). Each plugin's installation guide documents this.
 
@@ -64,5 +67,7 @@ Delete the Railway service, then the database: `DROP DATABASE commando;` on the 
 | Log shows `permission denied to create database` | The Postgres user can't create databases: create `commando` by hand, or leave `COMMANDO_DB_NAME` empty and point `DATABASE_URL` at an existing database |
 | Every plugin version shows *no release* | GitHub can't be reached or the rate limit is used up: set `GITHUB_TOKEN`. Plugins without any GitHub release also show *no release* |
 | Every installation shows *not checked* under API key | Expected until the plugins have the version that checks the key; older plugin versions don't send a check |
+| Every installation shows *no endpoint* under Reachable | Expected until the plugins have the version with the ping endpoint |
+| Every installation shows *not reachable* | The center can't make outgoing connections: check Railway's networking for the service |
 | An installation appears twice | The plugin reported different URLs (e.g. with and without `www`). Delete the one that no longer reports |
 | No installations appear | Plugins report only once they have the reporting version and their settings are saved or they are updated. Send a test report (see the developer guide) to check the endpoint |

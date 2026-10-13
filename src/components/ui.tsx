@@ -55,7 +55,7 @@ export function PluginVersion({ plugin, version, latest }: { plugin: string; ver
 export function NameVersion({ name, version }: { name: string | null; version: string | null }) {
   if (!name) return <span className="muted">–</span>;
   return (
-    <span>
+    <span style={{ whiteSpace: 'nowrap' }}>
       {name} {version && <span className="mono">{version}</span>}
     </span>
   );
@@ -118,4 +118,50 @@ const KEY_WORD: Record<string, string> = {
 /** Short wording for history lines: "API key rejected → ok". */
 export function keyStatusWord(status: string | null): string {
   return status ? (KEY_WORD[status] ?? status) : 'not checked';
+}
+
+const CALLBACK_LABEL: Record<string, { label: string; cls: string; hint: string }> = {
+  reachable: { label: 'reachable', cls: 'current', hint: 'The plugin answered the ping from the internet' },
+  unreachable: { label: 'not reachable', cls: 'bad', hint: 'No connection: DNS, firewall, timeout or TLS problem' },
+  blocked: { label: 'blocked', cls: 'bad', hint: 'The site answered with an error or a redirect (login, firewall)' },
+  wrong_answer: { label: 'wrong answer', cls: 'outdated', hint: 'Something answered, but not the plugin (cache, firewall or login page)' },
+  refused: { label: 'refused', cls: 'outdated', hint: "The center didn't ping this URL (not on the site's host, or a private address)" },
+};
+
+/** Result of the latest callback ping. */
+export function CallbackStatus({
+  url,
+  status,
+  ms,
+  checkedAt,
+  detail,
+}: {
+  url: string | null;
+  status: string | null;
+  ms?: number | null;
+  checkedAt?: Date | string | null;
+  detail?: string | null;
+}) {
+  if (!url) {
+    return (
+      <span className="badge unknown" title="This plugin version reports no ping endpoint">
+        no endpoint
+      </span>
+    );
+  }
+  if (!status) {
+    return (
+      <span className="badge unknown" title="Endpoint reported, not pinged yet">
+        not pinged
+      </span>
+    );
+  }
+  const c = CALLBACK_LABEL[status] ?? { label: status, cls: 'outdated', hint: 'Unknown result' };
+  const title = [c.hint, detail ?? '', checkedAt ? `pinged ${formatDate(checkedAt)}` : ''].filter(Boolean).join(' · ');
+  return (
+    <span className={`badge ${c.cls}`} title={title}>
+      {c.label}
+      {status === 'reachable' && ms != null ? ` · ${ms} ms` : ''}
+    </span>
+  );
 }

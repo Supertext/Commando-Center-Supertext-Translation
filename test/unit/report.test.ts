@@ -34,13 +34,14 @@ describe('parseReport (spec/report-examples.json)', () => {
         sdkVersion: '0.3.0',
         apiKeyConfigured: true,
         apiKeyCheck: { status: 'ok', checkedAt: new Date('2026-10-13T07:15:00Z'), httpStatus: 200, errorCode: null },
+        callbackUrl: 'https://www.example.ch/supertext/ping',
       },
     });
   });
 
   it('leaves optional fields null when missing or of the wrong type', () => {
     const r = parseReport({ ...examples.valid[2].body, runtime: 'PHP', api_key_configured: 'yes' });
-    expect(r.ok && r.report).toMatchObject({ runtime: null, runtimeVersion: null, sdkVersion: null, apiKeyConfigured: null, systemVersion: null, apiKeyCheck: null });
+    expect(r.ok && r.report).toMatchObject({ runtime: null, runtimeVersion: null, sdkVersion: null, apiKeyConfigured: null, systemVersion: null, apiKeyCheck: null, callbackUrl: null });
   });
 });
 
@@ -51,7 +52,9 @@ describe('api_key_check (spec/report-examples.json → stored)', () => {
       const r = parseReport(ex.body, NOW);
       expect(r.ok).toBe(true);
       if (!r.ok) return;
-      const want = (ex as { stored: { api_key_check: Record<string, unknown> | null } }).stored.api_key_check;
+      const stored = (ex as { stored: { api_key_check: Record<string, unknown> | null; callback_url?: string | null } }).stored;
+      if ('callback_url' in stored) expect(r.report.callbackUrl).toBe(stored.callback_url);
+      const want = stored.api_key_check;
       const got = r.report.apiKeyCheck;
       if (want === null) {
         expect(got).toBeNull();

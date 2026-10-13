@@ -1,11 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { requireAuth } from '@/lib/session';
-import { getInstallation, installationHistory, listClients, type Installation, type ReportRow } from '@/lib/db';
+import { getInstallation, installationHistory, listClients, pingHistory, type Installation, type ReportRow } from '@/lib/db';
 import { latestRelease, repoUrl } from '@/lib/releases';
-import { EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate, keyStatusWord } from '@/components/ui';
+import { CallbackStatus, EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate, keyStatusWord } from '@/components/ui';
 import ConfirmButton from '@/components/confirm-button';
-import { removeInstallation, saveInstallation } from '../../actions';
+import { pingNow, removeInstallation, saveInstallation } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -49,7 +49,12 @@ export default async function InstallationPage({
   if (!Number.isInteger(n) || n <= 0) notFound();
   const i = await getInstallation(n);
   if (!i) notFound();
-  const [history, clients, latest] = await Promise.all([installationHistory(n), listClients(), latestRelease(i.plugin)]);
+  const [history, clients, latest, pings] = await Promise.all([
+    installationHistory(n),
+    listClients(),
+    latestRelease(i.plugin),
+    pingHistory(n),
+  ]);
 
   return (
     <>
@@ -156,6 +161,74 @@ export default async function InstallationPage({
           </form>
         </section>
       </div>
+
+      <h2 id="callback">Reachable from the internet</h2>
+      <section className="card" aria-labelledby="callback">
+        {sp.pinged && <p className="notice" style={{ margin: '16px 20px 0' }}>Pinged.</p>}
+        {sp.ping_skipped && (
+          <p className="notice error" style={{ margin: '16px 20px 0' }}>
+            Not pinged: {sp.ping_skipped}.
+          </p>
+        )}
+        <dl className="facts">
+          <dt>Ping endpoint</dt>
+          <dd className="mono" style={{ wordBreak: 'break-all' }}>
+            {i.callback_url ?? <span className="muted">none reported (older plugin version, hosted app or reporting off)</span>}
+          </dd>
+          <dt>Last ping</dt>
+          <dd>
+            <span className="row" style={{ gap: 6 }}>
+              <CallbackStatus
+                url={i.callback_url}
+                status={i.callback_status}
+                ms={i.callback_ms}
+                checkedAt={i.callback_checked_at}
+                detail={i.callback_detail}
+              />
+              {i.callback_checked_at && <span className="muted small">{formatDate(i.callback_checked_at)}</span>}
+              {i.callback_detail && <span className="small">{i.callback_detail}</span>}
+            </span>
+          </dd>
+        </dl>
+        {i.callback_url && (
+          <form action={pingNow} className="row" style={{ padding: '0 20px 16px' }}>
+            <input type="hidden" name="id" value={i.id} />
+            <button type="submit">Ping now</button>
+            <span className="muted small">Calls the endpoint from the center with a new challenge.</span>
+          </form>
+        )}
+        {pings.length > 0 && (
+          <div className="table-wrap" style={{ borderTop: '1px solid var(--border)' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>Pinged</th>
+                  <th>Trigger</th>
+                  <th>Result</th>
+                  <th>Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pings.map((p) => (
+                  <tr key={p.id}>
+                    <td>{formatDate(p.checked_at)}</td>
+                    <td>
+                      <span className="badge event">{p.trigger === 'manual' ? 'Ping now' : 'report'}</span>
+                    </td>
+                    <td>
+                      <CallbackStatus url={p.url} status={p.status} ms={p.ms} checkedAt={p.checked_at} detail={p.detail} />
+                    </td>
+                    <td className="small" style={{ whiteSpace: 'normal' }}>
+                      {[p.http_status ? `HTTP ${p.http_status}` : '', p.detail ?? ''].filter(Boolean).join(' · ') || '–'}
+                      {p.url !== i.callback_url && <div className="muted mono">{p.url}</div>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
 
       <h2>History</h2>
       <div className="card table-wrap">

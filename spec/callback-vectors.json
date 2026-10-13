@@ -1,0 +1,38 @@
+{
+  "description": "Callback ping. 'urls': which reported callback URLs the center accepts for a site (checked before any network access; accepted URLs are still refused at connect time if the host resolves to a private or reserved address). 'endpoint': how the plugin's ping endpoint must answer GET <callback_url>?challenge=<c>. Shared with the SDKs, whose ping handler runs the endpoint cases.",
+  "urls": [
+    { "site": "https://www.example.ch", "callback": "https://www.example.ch/wp-json/supertext/v1/ping", "ok": true },
+    { "site": "https://www.example.ch", "callback": "https://example.ch/?rest_route=/supertext/v1/ping", "ok": true },
+    { "site": "https://example.ch", "callback": "https://connector.example.ch/ping", "ok": true },
+    { "site": "https://www.example.ch", "callback": "https://cms.example.ch/supertext/ping", "ok": true },
+    { "site": "https://shop.example.com/de", "callback": "https://shop.example.com/supertext/ping", "ok": true },
+    { "site": "https://example.ch:8443", "callback": "https://example.ch:8443/ping", "ok": true },
+    { "site": "http://example.ch", "callback": "http://example.ch/ping", "ok": true },
+    { "site": "https://www.example.ch", "callback": "https://www.example.ch/ping#top", "ok": true, "url": "https://www.example.ch/ping" },
+    { "site": "https://www.example.ch", "callback": "https://evil.example.net/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "https://example.ch.evil.net/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "https://notexample.ch/ping", "ok": false },
+    { "site": "https://shop.example.ch", "callback": "https://example.ch/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "https://www.example.ch:22/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "ftp://www.example.ch/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "https://user:pw@www.example.ch/ping", "ok": false },
+    { "site": "https://www.example.ch", "callback": "/wp-json/supertext/v1/ping", "ok": false },
+    { "site": "http://127.0.0.1", "callback": "http://127.0.0.1/ping", "ok": false },
+    { "site": "http://[::1]:8000", "callback": "http://[::1]:8000/ping", "ok": false },
+    { "site": "http://169.254.169.254", "callback": "http://169.254.169.254/latest/meta-data/", "ok": false }
+  ],
+  "blocked_addresses": ["127.0.0.1", "10.1.2.3", "172.16.0.1", "172.31.255.255", "192.168.1.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "224.0.0.1", "::1", "::", "fd12:3456::1", "fe80::1", "::ffff:127.0.0.1", "::ffff:10.0.0.1", "not-an-ip"],
+  "public_addresses": ["8.8.8.8", "172.32.0.1", "100.128.0.1", "193.5.1.1", "2a00:1450:4001::1", "::ffff:8.8.8.8"],
+  "endpoint": {
+    "request": "GET <callback_url> with ?challenge=<c> added (or &challenge=<c> when the URL has a query). No cookies, no login. User-Agent starts with Supertext-Commando-Center/.",
+    "challenge_pattern": "^[A-Za-z0-9_-]{16,64}$",
+    "answer": "HTTP 200, Content-Type: application/json, Cache-Control: no-store, body {\"ok\":true,\"plugin\":\"<repo name>\",\"challenge\":\"<c>\"} and nothing else.",
+    "cases": [
+      { "challenge": "AbCdEfGhIjKlMnOpQrStUvWx", "status": 200, "body": { "ok": true, "plugin": "<repo name>", "challenge": "AbCdEfGhIjKlMnOpQrStUvWx" } },
+      { "challenge": "short", "status": 400, "body": { "ok": false } },
+      { "challenge": "<script>alert(1)</script>xxxxxxxx", "status": 400, "body": { "ok": false } },
+      { "challenge": null, "status": 400, "body": { "ok": false } }
+    ],
+    "when_reporting_is_off": "HTTP 404 (the endpoint answers only while version reporting is on)"
+  }
+}

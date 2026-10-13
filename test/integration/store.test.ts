@@ -2,6 +2,8 @@
 // Each run drops and recreates the database commando_test on it, applies the migrations and
 // exercises the store and the report endpoint.
 import { execFileSync } from 'node:child_process';
+import http from 'node:http';
+import type { AddressInfo } from 'node:net';
 import postgres from 'postgres';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import examples from '../../spec/report-examples.json';
@@ -17,6 +19,8 @@ beforeAll(async () => {
   await admin.unsafe(`DROP DATABASE IF EXISTS ${NAME} WITH (FORCE)`);
   await admin.end();
   process.env.DATABASE_URL = SERVER;
+  // No real pings from tests: the spec example's endpoint host maps to a reserved address (refused offline).
+  process.env.COMMANDO_PING_HOSTS = 'www.example.ch=192.0.2.1';
   process.env.COMMANDO_DB_NAME = NAME;
   // Twice: the second run must be a no-op.
   for (let i = 0; i < 2; i++) {
@@ -168,6 +172,100 @@ describe('report endpoint and store', () => {
       const res = await post({ ...site, event: 'settings_saved', plugin: { name: 'Strapi-Supertext-Translation', version: '0.3.0' }, api_key_check: { status: 'BROKEN' } }, ip);
       expect(res.status).toBe(202);
       expect(await find()).toMatchObject({ api_key_status: 'invalid', report_count: before + 1 });
+    });
+  });
+
+  describe('callback ping', () => {
+    let server: http.Server;
+    let port: number;
+    let hits = 0;
+    let pinger: typeof import('../../src/lib/pinger');
+    const ip = { 'x-forwarded-for': '198.51.100.30' };
+    const site = (host: string, path = '/supertext/ping') => ({
+      ...base,
+      event: 'settings_saved',
+      site_url: `http://${host}:${port}`,
+      plugin: { name: 'Grav-Supertext-Translation', version: '0.2.0' },
+      system: { name: 'Grav', version: '2.0.0' },
+      callback: { url: `http://${host}:${port}${path}` },
+    });
+    const find = async (host: string) => (await store.listInstallations({ q: host }))[0];
+    const settle = () => new Promise((r) => setTimeout(r, 300));
+
+    beforeAll(async () => {
+      server = http.createServer((req, res) => {
+        hits++;
+        const u = new URL(req.url ?? '/', 'http://x');
+        res.writeHead(u.pathname === '/supertext/ping' ? 200 : 403, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, plugin: 'Grav-Supertext-Translation', challenge: u.searchParams.get('challenge') }));
+      });
+      await new Promise<void>((r) => server.listen(0, '127.0.0.1', r));
+      port = (server.address() as AddressInfo).port;
+      // Test-only switches: let the pinger reach the local server under public-looking names.
+      process.env.COMMANDO_PING_ALLOW_PRIVATE = '1';
+      process.env.COMMANDO_PING_HOSTS = 'grav.example.ch=127.0.0.1,locked.example.ch=127.0.0.1,www.example.ch=192.0.2.1';
+      pinger = await import('../../src/lib/pinger');
+      pinger.resetPinger();
+    });
+    afterAll(async () => {
+      delete process.env.COMMANDO_PING_ALLOW_PRIVATE;
+      delete process.env.COMMANDO_PING_HOSTS;
+      await new Promise<void>((r) => server.close(() => r()));
+    });
+
+    it('a report with an endpoint is pinged after the answer and stored', async () => {
+      expect((await post(site('grav.example.ch'), ip)).status).toBe(202);
+      await settle();
+      const i = await find('grav.example.ch');
+      expect(i).toMatchObject({ callback_url: `http://grav.example.ch:${port}/supertext/ping`, callback_status: 'reachable', callback_http_status: 200 });
+      expect(i.callback_ms).toBeGreaterThanOrEqual(0);
+      const [p] = await store.pingHistory(i.id);
+      expect(p).toMatchObject({ trigger: 'report', status: 'reachable' });
+    });
+
+    it('a second report within a minute does not ping again', async () => {
+      const before = hits;
+      await post(site('grav.example.ch'), ip);
+      await settle();
+      expect(hits).toBe(before);
+    });
+
+    it('Ping now pings and records the trigger', async () => {
+      const i = await find('grav.example.ch');
+      pinger.resetPinger();
+      const out = await pinger.pingInstallation(i.id, 'manual');
+      expect(out.pinged).toBe(true);
+      expect((await store.pingHistory(i.id))[0].trigger).toBe('manual');
+      expect(await pinger.pingInstallation(i.id, 'manual')).toEqual({ pinged: false, reason: 'pinged a moment ago' });
+    });
+
+    it('a report without an endpoint keeps the stored one', async () => {
+      const { callback, ...noCallback } = site('grav.example.ch');
+      void callback;
+      await post({ ...noCallback, event: 'upgraded' }, ip);
+      expect((await find('grav.example.ch')).callback_url).toBe(`http://grav.example.ch:${port}/supertext/ping`);
+    });
+
+    it('records a blocked endpoint', async () => {
+      await post(site('locked.example.ch', '/wrong/path'), ip);
+      await settle();
+      expect(await find('locked.example.ch')).toMatchObject({ callback_status: 'blocked', callback_http_status: 403, callback_detail: 'HTTP 403' });
+    });
+
+    it('refuses an endpoint on another host without connecting', async () => {
+      const before = hits;
+      await post({ ...site('grav2.example.ch'), callback: { url: `http://evil.example.net:${port}/supertext/ping` } }, ip);
+      await settle();
+      expect(hits).toBe(before);
+      expect(await find('grav2.example.ch')).toMatchObject({ callback_status: 'refused', callback_detail: expect.stringMatching(/not grav2\.example\.ch/) });
+    });
+
+    it('filters by reachability', async () => {
+      // Only this suite's sites (the spec example www.example.ch was refused).
+      const ours = (rows: { site_url: string }[]) => rows.map((i) => i.site_url).filter((u) => u.endsWith(`:${port}`)).sort();
+      expect(ours(await store.listInstallations({ callback: 'problem' }))).toEqual([`http://grav2.example.ch:${port}`, `http://locked.example.ch:${port}`]);
+      expect(ours(await store.listInstallations({ callback: 'reachable' }))).toEqual([`http://grav.example.ch:${port}`]);
+      expect((await store.listInstallations({ callback: 'none' })).every((i) => i.callback_url === null)).toBe(true);
     });
   });
 

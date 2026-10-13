@@ -32,6 +32,12 @@ export interface Installation {
   api_key_checked_at: Date | null;
   api_key_http_status: number | null;
   api_key_error_code: string | null;
+  callback_url: string | null;
+  callback_status: string | null;
+  callback_checked_at: Date | null;
+  callback_http_status: number | null;
+  callback_ms: number | null;
+  callback_detail: string | null;
   last_event: string;
   first_seen: Date;
   last_seen: Date;
@@ -88,10 +94,10 @@ export async function recordReport(r: Report, sql: Sql = db()): Promise<{ instal
       const [row] = await tx<{ id: number }[]>`
         INSERT INTO installations (site_url, plugin, local, plugin_version, system, system_version, runtime,
           runtime_version, sdk_version, api_key_configured, api_key_status, api_key_checked_at, api_key_http_status,
-          api_key_error_code, last_event)
+          api_key_error_code, callback_url, last_event)
         VALUES (${r.siteUrl}, ${r.plugin}, ${r.local}, ${r.pluginVersion}, ${r.system}, ${r.systemVersion},
           ${r.runtime}, ${r.runtimeVersion}, ${r.sdkVersion}, ${r.apiKeyConfigured}, ${key.status}, ${key.checkedAt},
-          ${key.httpStatus}, ${key.errorCode}, ${r.event})
+          ${key.httpStatus}, ${key.errorCode}, ${r.callbackUrl}, ${r.event})
         ON CONFLICT (site_url, plugin) DO UPDATE SET last_seen = ${now}
         RETURNING id`;
       id = row.id;
@@ -113,6 +119,7 @@ export async function recordReport(r: Report, sql: Sql = db()): Promise<{ instal
           sdk_version = ${r.sdkVersion}, api_key_configured = ${r.apiKeyConfigured}, local = ${r.local},
           api_key_status = ${key.status}, api_key_checked_at = ${key.checkedAt},
           api_key_http_status = ${key.httpStatus}, api_key_error_code = ${key.errorCode},
+          callback_url = ${r.callbackUrl ?? existing.callback_url},
           last_event = ${r.event}, last_seen = ${now}, report_count = report_count + 1
         WHERE id = ${id}`;
     }
@@ -134,6 +141,8 @@ export interface InstallationFilter {
   includeLocal?: boolean;
   /** 'problem': any check result other than ok; 'unchecked': no check reported yet; or one status. */
   keyStatus?: string;
+  /** 'problem': last ping not reachable; 'none': no ping endpoint reported; or one status. */
+  callback?: string;
 }
 
 export async function listInstallations(f: InstallationFilter = {}, sql: Sql = db()): Promise<Installation[]> {
@@ -152,6 +161,15 @@ export async function listInstallations(f: InstallationFilter = {}, sql: Sql = d
             ? sql`AND i.api_key_status IS NULL`
             : f.keyStatus
               ? sql`AND i.api_key_status = ${f.keyStatus}`
+              : sql``
+      }
+      ${
+        f.callback === 'problem'
+          ? sql`AND i.callback_status IS NOT NULL AND i.callback_status <> 'reachable'`
+          : f.callback === 'none'
+            ? sql`AND i.callback_url IS NULL`
+            : f.callback
+              ? sql`AND i.callback_status = ${f.callback}`
               : sql``
       }
       ${like ? sql`AND (i.site_url ILIKE ${like} OR c.name ILIKE ${like} OR i.system ILIKE ${like} OR i.notes ILIKE ${like})` : sql``}
@@ -214,4 +232,47 @@ export async function updateClient(id: number, name: string, notes: string, sql:
 
 export async function deleteClient(id: number, sql: Sql = db()): Promise<void> {
   await sql`DELETE FROM clients WHERE id = ${id}`;
+}
+
+export interface PingRow {
+  id: number;
+  checked_at: Date;
+  trigger: string;
+  url: string;
+  status: string;
+  http_status: number | null;
+  ms: number | null;
+  detail: string | null;
+}
+
+/** Stores a ping result on the installation and in its ping history. */
+export async function savePing(
+  installationId: number,
+  trigger: 'report' | 'manual',
+  url: string,
+  r: { status: string; httpStatus: number | null; ms: number | null; detail: string | null },
+  sql: Sql = db(),
+): Promise<void> {
+  await sql.begin(async (tx) => {
+    const [{ now }] = await tx<{ now: Date }[]>`SELECT now() AS now`;
+    await tx`
+      UPDATE installations SET callback_status = ${r.status}, callback_checked_at = ${now},
+        callback_http_status = ${r.httpStatus}, callback_ms = ${r.ms}, callback_detail = ${r.detail}
+      WHERE id = ${installationId}`;
+    await tx`
+      INSERT INTO callback_pings (installation_id, checked_at, trigger, url, status, http_status, ms, detail)
+      VALUES (${installationId}, ${now}, ${trigger}, ${url}, ${r.status}, ${r.httpStatus}, ${r.ms}, ${r.detail})`;
+  });
+}
+
+export async function pingHistory(installationId: number, limit = 20, sql: Sql = db()): Promise<PingRow[]> {
+  return sql<PingRow[]>`
+    SELECT id, checked_at, trigger, url, status, http_status, ms, detail FROM callback_pings
+    WHERE installation_id = ${installationId} ORDER BY checked_at DESC, id DESC LIMIT ${limit}`;
+}
+
+export async function lastPingUrl(installationId: number, sql: Sql = db()): Promise<string | null> {
+  const [row] = await sql<{ url: string }[]>`
+    SELECT url FROM callback_pings WHERE installation_id = ${installationId} ORDER BY checked_at DESC, id DESC LIMIT 1`;
+  return row?.url ?? null;
 }

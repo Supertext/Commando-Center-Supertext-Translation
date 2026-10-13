@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { recordReport } from '@/lib/db';
+import { pingInstallation } from '@/lib/pinger';
 import { MAX_BODY_BYTES, parseReport } from '@/lib/report';
 import { RateLimiter, clientIp } from '@/lib/rate-limit';
 
@@ -39,13 +40,26 @@ export async function POST(req: Request) {
   const parsed = parseReport(body);
   if (!parsed.ok) return json(400, { ok: false, error: parsed.error });
 
+  let installationId: number;
   try {
-    await recordReport(parsed.report);
+    ({ installationId } = await recordReport(parsed.report));
   } catch (e) {
     console.error('report: could not store', parsed.report.siteUrl, parsed.report.plugin, e instanceof Error ? e.message : e);
     return json(503, { ok: false, error: 'Could not store the report; try again later.' });
   }
+  // The callback ping runs after the answer is sent, so it never slows the plugin down.
+  if (parsed.report.callbackUrl) schedule(() => pingInstallation(installationId, 'report', parsed.report.event));
   return json(202, { ok: true });
+}
+
+function schedule(task: () => Promise<unknown>) {
+  const run = () =>
+    task().catch((e) => console.error('ping: failed', e instanceof Error ? e.message : e));
+  try {
+    after(run);
+  } catch {
+    void run(); // outside a request scope (tests)
+  }
 }
 
 export function GET() {

@@ -15,6 +15,8 @@ export interface Report {
   apiKeyConfigured: boolean | null;
   /** Latest automatic API key check, or null when the report has none (or a malformed one). */
   apiKeyCheck: ApiKeyCheck | null;
+  /** The plugin's public ping endpoint as reported (checked against the site later), or null. */
+  callbackUrl: string | null;
 }
 
 export interface ApiKeyCheck {
@@ -71,6 +73,13 @@ export function parseApiKeyCheck(value: unknown, now = Date.now()): ApiKeyCheck 
   return { status, checkedAt, httpStatus, errorCode: code };
 }
 
+/** Optional {"url": "..."}; anything malformed is dropped like a malformed key check. */
+export function parseCallback(value: unknown): string | null {
+  const c = obj(value);
+  const url = c && text(c.url, 500);
+  return url && /^https?:\/\//i.test(url) ? url : null;
+}
+
 export function parseReport(body: unknown, now = Date.now()): ParseResult {
   const b = obj(body);
   if (!b) return { ok: false, error: 'Body must be a JSON object.' };
@@ -108,6 +117,7 @@ export function parseReport(body: unknown, now = Date.now()): ParseResult {
       sdkVersion: text(b.sdk_version, 50),
       apiKeyConfigured: typeof b.api_key_configured === 'boolean' ? b.api_key_configured : null,
       apiKeyCheck: parseApiKeyCheck(b.api_key_check, now),
+      callbackUrl: parseCallback(b.callback),
     },
   };
 }

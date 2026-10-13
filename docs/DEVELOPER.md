@@ -1,6 +1,6 @@
 # Developer guide
 
-The Commando Center collects version reports from the Supertext plugins and shows them to Supertext staff: which site runs which plugin version on which system and runtime version, whether its API key works, and since when. This guide covers the report protocol (what every plugin implements), the app's architecture, local setup, tests, deployment and releasing.
+The Commando Center collects version reports from the Supertext plugins and shows them to Supertext staff: which site runs which plugin version on which system and runtime version, whether its API key works, whether the site is reachable from the internet, and since when. This guide covers the report protocol (what every plugin implements), the app's architecture, local setup, tests, deployment and releasing.
 
 ## Architecture
 
@@ -21,6 +21,8 @@ The Commando Center collects version reports from the Supertext plugins and show
 | `src/lib/db.ts` | All queries |
 | `src/lib/db-url.mjs` | Database URL from `DATABASE_URL` + `COMMANDO_DB_NAME`, shared by the app and the migrations |
 | `src/lib/auth.ts`, `session.ts` | Password check and signed session cookie |
+| `src/lib/callback.ts` | The callback ping: URL check, address blocklist, the request itself |
+| `src/lib/pinger.ts` | When to ping (throttle, re-ping), stores the result |
 | `src/lib/releases.ts`, `semver.ts` | Latest GitHub release per plugin and version comparison |
 | `spec/` | Protocol schema and test vectors, shared with the SDKs |
 
@@ -28,6 +30,7 @@ The Commando Center collects version reports from the Supertext plugins and show
 
 - `installations`: one row per **normalized site URL + plugin** with the latest reported state (including the newest API key check), the client it is mapped to, notes, first and last report.
 - `reports`: every report received (event, versions, the key check if the report had one, `changed` = differs from the previous state). The history on the installation page reads from here.
+- `callback_pings`: every callback ping (time, trigger `report` or `manual`, URL, result, HTTP status, latency, detail); the installation keeps the latest result.
 - `clients`: Supertext customers, created by hand. Names are unique regardless of case. Deleting a client unmaps its installations; deleting an installation deletes its history.
 
 ## Report protocol
@@ -49,7 +52,8 @@ Content-Type: application/json
   "runtime": { "name": "PHP", "version": "8.3.12" },
   "sdk_version": "0.3.0",
   "api_key_configured": true,
-  "api_key_check": { "status": "ok", "checked_at": "2026-10-13T09:15:00+02:00", "http_status": 200 }
+  "api_key_check": { "status": "ok", "checked_at": "2026-10-13T09:15:00+02:00", "http_status": 200 },
+  "callback": { "url": "https://www.example.ch/wp-json/supertext/v1/ping" }
 }
 ```
 
@@ -64,6 +68,7 @@ Content-Type: application/json
 | `runtime.name`, `runtime.version` | no | `PHP`, `Node.js`, `Python`, `.NET`, `Java` and the full version. |
 | `sdk_version` | no | Version of the bundled Supertext SDK (its `COMMIT` file's tag, if any). |
 | `api_key_configured` | no | `true`/`false`. Never the key itself. |
+| `callback.url` | no | The plugin's public ping endpoint (see *The callback ping*). Absolute http(s) URL on the site's host or a subdomain of it, at most 500 characters. A report without it keeps the stored one. |
 | `api_key_check.status` | no | Result of the latest automatic key check: `ok`, `invalid` (Supertext answered 401/403), `missing` (no key set), `unreachable` (network error, timeout, HTTP 5xx), `error` (any other answer). Other values are stored as given. |
 | `api_key_check.checked_at` | no | When the check ran, ISO 8601 with time zone. Missing, more than 5 minutes in the future or before 2020: the center uses the time it received the report. |
 | `api_key_check.http_status` | no | The HTTP status Supertext answered the check with |
@@ -126,6 +131,28 @@ Every plugin checks the API key automatically, so administrators learn about a w
 
 Plugins that already have a *Test connection* button and an *authentication failed* message keep their wording if it carries both links; the table is for plugins that don't have one yet.
 
+### The callback ping
+
+So that Supertext can later call installations back (e.g. "translation ready"), the center checks whether each installation is reachable from the internet: it calls the plugin's ping endpoint and checks the answer.
+
+**The plugin's endpoint**
+
+- A public route that needs no login, no session and no CSRF token, excluded from the CMS's page cache, answering only `GET`. Suggested paths: WordPress `/wp-json/supertext/v1/ping`, TYPO3 an eID or middleware path, Joomla `index.php?option=com_ajax&plugin=supertext&format=json`, Magento `/rest/V1/supertext/ping`, Node CMSs `/supertext/ping` under their API prefix. The plugin sends the full URL in `callback.url`, built from the site's own base URL.
+- Request: `GET <url>?challenge=<c>` (or `&challenge=` when the URL already has a query). `c` matches `^[A-Za-z0-9_-]{16,64}$`; anything else gets HTTP 400 `{"ok":false}`, so nothing a caller sends is reflected.
+- Answer: HTTP 200, `Content-Type: application/json`, `Cache-Control: no-store`, body `{"ok":true,"plugin":"<repo name>","challenge":"<c>"}`. Nothing else: no versions, no settings, no data. The answer is the same for everyone; there is nothing to protect.
+- Only while version reporting is on. With reporting off: HTTP 404 and no `callback` in reports.
+- Hosted apps (Shopify, Wix) and plugins without a server part (the design-file scripts) send no `callback`.
+- `spec/callback-vectors.json` → `endpoint` has the cases the SDKs' handler tests run.
+
+**The center's ping**
+
+- When: after a report with `callback.url`, once the answer has been sent (Next.js `after()`), when the URL is new, the event is `installed`, `settings_saved` or `check`, or the last ping is more than 6 hours old. Never more than once a minute per installation, at most 8 pings at once. Staff can press **Ping now** on the installation page. Local and test hosts are never pinged.
+- Safety (the URL comes from an unauthenticated report, so the center must not become a tool for probing other hosts or its own network): the URL's host must be the site's host or a subdomain of it (a leading `www.` of the site is ignored); `http`/`https` only, no user info; port 80, 443 or the site's own port. Every address the host resolves to is checked when the socket connects (no DNS rebinding), IP literals before: loopback, private, link-local (including cloud metadata `169.254.169.254`), CGNAT (`100.64.0.0/10`), unique-local IPv6 (Railway's private network), multicast and reserved ranges are refused. `GET` only, no redirects followed, no cookies, 5 s timeout, at most 4 KB read, TLS certificates verified. User agent `Supertext-Commando-Center/<version> (+https://github.com/Supertext/Commando-Center-Supertext-Translation)`.
+- Results: `reachable` (HTTP 200 and the challenge echoed by the right plugin; latency stored), `unreachable` (DNS, connection, timeout, TLS), `blocked` (any non-2xx, including redirects to a login page), `wrong_answer` (2xx but not the plugin's answer: a cache, maintenance or firewall page, another plugin), `refused` (the center didn't connect: other host, port or a private address). Each result has a short plain `detail` ("HTTP 302 to /wp-login.php", "connection timed out").
+- The center's outgoing IP addresses aren't fixed (Railway). Customers who only let known addresses in can't allow it yet; see the roadmap.
+
+**Test-only switches** (never set in production; the image check makes sure the image doesn't set them): `COMMANDO_PING_ALLOW_PRIVATE=1` allows private addresses, `COMMANDO_PING_HOSTS=host=ip[:port],…` connects to fixed addresses instead of DNS (the `Host` header and TLS name stay the real host). The integration tests and `npm run docs:screenshots` use them.
+
 ### The setting in the plugins
 
 Every plugin has this setting, **on by default**, next to its other settings (environment variable `SUPERTEXT_VERSION_REPORTS=0` turns it off where settings live in the environment, e.g. Directus, Strapi, Ghost; the plugin's settings file elsewhere). The URL of the center can be overridden for tests with `SUPERTEXT_REPORT_URL`; the default is in the SDK.
@@ -166,18 +193,20 @@ curl -i -H 'Content-Type: application/json' \
 | Command | What it checks |
 | --- | --- |
 | `npm run typecheck` | TypeScript |
-| `npm test` | Unit tests: URL normalization, report validation and the API key check against `spec/`, versions, sessions, rate limit, database URL, release lookup |
-| `npm run test:integration` | Migrations (twice), the store (including which key check an installation keeps) and the report endpoint against a real Postgres. Needs `TEST_DATABASE_URL` (default `postgres://postgres:postgres@127.0.0.1:5432/postgres`); drops and recreates the database `commando_test` on it |
+| `npm test` | Unit tests: URL normalization, report validation, the API key check and the callback URL check and address blocklist against `spec/`; real pings against local test servers (reachable, wrong answer, blocked, timeout, refused, DNS-rebinding style names); versions, sessions, rate limit, database URL, release lookup |
+| `npm run test:integration` | Migrations (twice), the store (including which key check an installation keeps), the report endpoint and the ping after a report (throttle, *Ping now*, blocked and refused endpoints) against a real Postgres and a local ping server. Needs `TEST_DATABASE_URL` (default `postgres://postgres:postgres@127.0.0.1:5432/postgres`); drops and recreates the database `commando_test` on it |
 | `test/image-check.sh` | The Docker image: starts it twice against Postgres, checks health, the login redirect, reports, migrations and that the password never reaches the log |
 
 CI (`.github/workflows/ci.yml`) runs all of them on every push and pull request, with Postgres 16 as a service.
 
 ## Docs screenshots
 
-`npm run docs:screenshots` fills an empty center with invented sample sites and clients and saves the screenshots in `docs/images/`. It starts a stand-in for the GitHub releases API on port 8766, so start the center with that first:
+`npm run docs:screenshots` fills an empty center with invented sample sites and clients and saves the screenshots in `docs/images/`. It starts a stand-in on port 8766 for the GitHub releases API and for the sample sites' ping endpoints, so start the center against it first (with a fresh database and a fresh process: the ping throttle lives in memory):
 
 ```bash
-GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
+GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PING_ALLOW_PRIVATE=1 \
+COMMANDO_PING_HOSTS="$(node scripts/docs-screenshots.mjs --ping-hosts)" \
+COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
 COMMANDO_URL=http://127.0.0.1:3000 COMMANDO_PASSWORD=… npm run docs:screenshots
 ```
 
@@ -213,6 +242,9 @@ Releases are published by `.github/workflows/release.yml` when the version is of
 ## Known limitations / roadmap
 
 - **Plugins:** the report client and the key-check mapping go into the SDKs (TypeScript, PHP, Python, .NET, Java), then into every plugin with the setting and the automatic key check above.
+- **Callbacks:** the ping only proves reachability. Real callbacks from Supertext will need a signature the plugin can verify (e.g. HMAC with a secret exchanged in the report response) before the plugin acts on them.
+- **Fixed outgoing addresses:** for customers whose firewalls only let known addresses in, the center needs a static egress IP (Railway static outbound IPs) published in the plugins' installation guides.
+- **Scheduled pings:** today pings follow reports and *Ping now*; a daily ping of all installations would catch sites that went dark without reporting.
 - **Remote checks:** a later version answers reports with checks to run (e.g. "test the API key", "translate a sample") and receives their results. The response format already allows extra fields.
 - **Authenticity:** reports aren't signed. If invented reports become a problem, plugins could sign with a key derived from the Supertext API key.
 - One shared password, no per-person accounts or audit log.

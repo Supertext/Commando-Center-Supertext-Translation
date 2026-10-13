@@ -47,6 +47,14 @@
     },
     "sdk_version": { "description": "Version of the bundled Supertext SDK, if any.", "type": "string", "maxLength": 50 },
     "api_key_configured": { "description": "Whether a Supertext API key is set. Never the key itself.", "type": "boolean" },
+    "callback": {
+      "description": "The plugin's public ping endpoint. The center calls GET <url>?challenge=<c> to see whether the installation is reachable from the internet (spec/callback-vectors.json). Must be on the site's host or a subdomain of it. Omit it where the plugin has no public endpoint (hosted apps) or reporting is off.",
+      "type": "object",
+      "required": ["url"],
+      "properties": {
+        "url": { "type": "string", "maxLength": 500, "format": "uri" }
+      }
+    },
     "api_key_check": {
       "description": "Result of the plugin's latest automatic API key check (cost-free GET features against the Supertext API). Never the key itself.",
       "type": "object",

@@ -10,6 +10,7 @@ The **Supertext Commando Center**: collects version reports from all Supertext p
 - UI changes: regenerate the screenshots with `npm run docs:screenshots` (see the developer guide).
 - Every page and server action calls `requireAuth()`; only `/api/v1/report`, `/health` and `/login` are public.
 - Never log or store API keys, passwords or report senders' IP addresses.
+- **The callback ping connects to URLs from unauthenticated reports.** Never weaken `src/lib/callback.ts`: host must match the site, private/reserved addresses refused at connect time, no redirects, timeouts and size caps. Every new outgoing request goes through the same guard. `COMMANDO_PING_ALLOW_PRIVATE` / `COMMANDO_PING_HOSTS` are test-only and must never reach production.
 - The UI is for Supertext staff and stays in English (the plugins' own UI is the one in four languages).
 
 ## Before committing
