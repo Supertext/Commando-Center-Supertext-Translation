@@ -216,6 +216,8 @@ Needs Playwright's Chromium (`npx playwright install chromium`, or `CHROME=/path
 
 Railway builds the `Dockerfile` at the repo root. The image runs `scripts/migrate.mjs` and then the Next.js standalone server on `PORT` (8080 by default). Settings, the region and the healthcheck are set on the Railway service (Railway ignores `railway.json`); see `docs/INSTALLATION.md`.
 
+Railway deploys every push to `main` through its GitHub app, which must have access to this repository (Supertext organization settings → Installations → Railway). After that access changes, reconnect the service's source once so Railway creates its push trigger again; until then, pushes build nothing and only a reconnect or a manual redeploy deploys.
+
 ## Dependency updates
 
 Dependabot opens weekly pull requests (npm minor and patch grouped, GitHub Actions grouped, the Docker base image). Merge when CI is green. Not taken automatically:
