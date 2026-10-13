@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/Supertext/Commando-Center-Supertext-Translation/blob/main/spec/report-v1.schema.json",
+  "title": "Supertext plugin version report, v1",
+  "description": "Body of POST /api/v1/report. Sent by a Supertext plugin when its settings are saved and when its own, the system's or the runtime's version changed. See docs/DEVELOPER.md → Report protocol.",
+  "type": "object",
+  "required": ["schema", "event", "site_url", "plugin", "system"],
+  "additionalProperties": true,
+  "properties": {
+    "schema": { "const": 1 },
+    "event": {
+      "description": "Why the report is sent: installed, settings_saved, upgraded (plugin, system or runtime version changed since the last report) or check (sent by a command or test). Other values are stored as given.",
+      "type": "string",
+      "pattern": "^[a-z_]{1,40}$",
+      "examples": ["installed", "settings_saved", "upgraded", "check"]
+    },
+    "site_url": {
+      "description": "Base URL of the installation (the site or back end the plugin runs in). It identifies the installation; the center normalizes it (see site-url-vectors.json).",
+      "type": "string",
+      "maxLength": 500
+    },
+    "plugin": {
+      "type": "object",
+      "required": ["name", "version"],
+      "properties": {
+        "name": { "description": "The plugin's GitHub repository name, e.g. Typo3-Supertext-Translation.", "type": "string", "pattern": "^[A-Za-z0-9._-]{1,100}$" },
+        "version": { "description": "The version from the plugin's official version source (see plugin-conventions → Releases).", "type": "string", "maxLength": 50 }
+      }
+    },
+    "system": {
+      "description": "The host system: CMS, PIM, shop or application.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 100 },
+        "version": { "type": "string", "maxLength": 50 }
+      }
+    },
+    "runtime": {
+      "description": "The language runtime the plugin runs on, e.g. PHP 8.3.12, Node.js 22.11.0, Python 3.12.7, .NET 9.0.0, Java 21.0.4.",
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": { "type": "string", "maxLength": 50 },
+        "version": { "type": "string", "maxLength": 50 }
+      }
+    },
+    "sdk_version": { "description": "Version of the bundled Supertext SDK, if any.", "type": "string", "maxLength": 50 },
+    "api_key_configured": { "description": "Whether a Supertext API key is set. Never the key itself.", "type": "boolean" }
+  }
+}

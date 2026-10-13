@@ -1,0 +1,9 @@
+node_modules
+.next
+.git
+.github
+docs
+test-results
+*.log
+.env
+.env.*

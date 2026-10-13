@@ -1,0 +1,107 @@
+// Takes the screenshots in docs/images/ from a running center with an empty database.
+//
+//   1. Start the center against a fresh database, pointing GitHub release lookups at the
+//      stand-in this script starts on port 8766:
+//        GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
+//   2. COMMANDO_URL=http://127.0.0.1:3000 COMMANDO_PASSWORD=… npm run docs:screenshots
+//
+// It sends sample reports for invented sites (no customer data), maps two of them to
+// invented clients through the UI, and saves cropped 1× PNGs.
+import http from 'node:http';
+import { mkdir } from 'node:fs/promises';
+import { chromium } from 'playwright';
+
+const BASE = (process.env.COMMANDO_URL || 'http://127.0.0.1:3000').replace(/\/+$/, '');
+const PASSWORD = process.env.COMMANDO_PASSWORD;
+if (!PASSWORD) throw new Error('Set COMMANDO_PASSWORD (the one the center runs with).');
+const OUT = new URL('../docs/images/', import.meta.url);
+
+// Stand-in for the GitHub releases API: the latest release per plugin.
+const RELEASES = {
+  'supertext-wordpress-polylang': '2.1.0',
+  'Typo3-Supertext-Translation': '0.4.0',
+  'Magento-Supertext-Translation': '0.3.0',
+  'Strapi-Supertext-Translation': '0.2.0',
+  'Contao-Supertext-Translation': '0.3.1',
+};
+const standIn = http
+  .createServer((req, res) => {
+    const m = req.url?.match(/^\/repos\/[^/]+\/([^/]+)\/releases/);
+    const v = m && RELEASES[decodeURIComponent(m[1])];
+    res.writeHead(v ? 200 : 404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(v ? [{ tag_name: `v${v}`, draft: false }] : { message: 'Not Found' }));
+  })
+  .listen(8766, '127.0.0.1');
+
+async function report(body) {
+  const res = await fetch(`${BASE}/api/v1/report`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ schema: 1, ...body }),
+  });
+  if (res.status !== 202) throw new Error(`report failed: ${res.status} ${await res.text()}`);
+}
+
+const wp = (system, plugin, event) => ({
+  event,
+  site_url: 'https://www.alpenblick-hotels.example.ch/',
+  plugin: { name: 'supertext-wordpress-polylang', version: plugin },
+  system: { name: 'WordPress', version: system },
+  runtime: { name: 'PHP', version: '8.3.12' },
+  api_key_configured: true,
+});
+const samples = [
+  wp('6.8.3', '2.0.0', 'installed'),
+  wp('6.8.3', '2.0.0', 'settings_saved'),
+  wp('6.9.0', '2.0.0', 'upgraded'),
+  wp('6.9.0', '2.1.0', 'upgraded'),
+  { event: 'settings_saved', site_url: 'https://staging.alpenblick-hotels.example.ch', plugin: { name: 'supertext-wordpress-polylang', version: '2.0.0' }, system: { name: 'WordPress', version: '6.8.3' }, runtime: { name: 'PHP', version: '8.2.20' }, api_key_configured: true },
+  { event: 'upgraded', site_url: 'https://www.bergbahnen-muster.example.ch/', plugin: { name: 'Typo3-Supertext-Translation', version: '0.3.0' }, system: { name: 'TYPO3', version: '13.4.2' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true },
+  { event: 'installed', site_url: 'https://shop.velo-beispiel.example.com/de/', plugin: { name: 'Magento-Supertext-Translation', version: '0.3.0' }, system: { name: 'Magento', version: '2.4.8' }, runtime: { name: 'PHP', version: '8.4.1' }, api_key_configured: false },
+  { event: 'settings_saved', site_url: 'https://cms.uhrenmanufaktur.example.org', plugin: { name: 'Strapi-Supertext-Translation', version: '0.2.0' }, system: { name: 'Strapi', version: '5.12.0' }, runtime: { name: 'Node.js', version: '22.11.0' }, sdk_version: '0.3.0', api_key_configured: true },
+  { event: 'settings_saved', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true },
+];
+for (const s of samples) await report(s);
+
+await mkdir(OUT, { recursive: true });
+const browser = await chromium.launch(process.env.CHROME ? { executablePath: process.env.CHROME } : {});
+const page = await browser.newPage({ viewport: { width: 1360, height: 640 }, deviceScaleFactor: 1, colorScheme: 'light' });
+const shot = async (name, opts = {}) => page.screenshot({ path: new URL(name, OUT).pathname, ...opts });
+
+await page.goto(`${BASE}/login`);
+await shot('login.png', { clip: { x: 440, y: 60, width: 480, height: 300 } });
+await page.fill('input[name=password]', PASSWORD);
+await Promise.all([page.waitForURL(`${BASE}/`), page.click('button[type=submit]')]);
+
+// Map the two Alpenblick sites to one client (new client, then existing), the Bergbahnen site to another.
+async function mapTo(urlPart, client, isNew) {
+  await page.goto(`${BASE}/`);
+  await page.click(`a:has-text("${urlPart}")`);
+  await page.waitForLoadState('networkidle'); // fill the form only once React has hydrated it
+  if (isNew) await page.fill('input[name=new_client]', client);
+  else await page.selectOption('select[name=client]', { label: client });
+  await page.fill('textarea[name=notes]', urlPart.startsWith('staging') ? 'Staging' : 'Production');
+  await Promise.all([page.waitForURL(/saved=1/), page.click('button.primary')]);
+}
+await mapTo('www.alpenblick-hotels', 'Alpenblick Hotels AG', true);
+await mapTo('staging.alpenblick-hotels', 'Alpenblick Hotels AG', false);
+await mapTo('www.bergbahnen-muster', 'Bergbahnen Muster', true);
+
+await page.goto(`${BASE}/`);
+await shot('installations.png', { fullPage: true });
+await page.goto(`${BASE}/?status=outdated`);
+await shot('installations-outdated.png', { clip: { x: 0, y: 0, width: 1360, height: 520 } });
+
+await page.goto(`${BASE}/`);
+await page.click('a:has-text("www.alpenblick-hotels")');
+await page.waitForSelector('h2:has-text("History")');
+await shot('installation.png', { fullPage: true });
+
+await page.goto(`${BASE}/clients`);
+await shot('clients.png', { clip: { x: 0, y: 0, width: 1360, height: 360 } });
+await Promise.all([page.waitForURL(/\/clients\/\d+$/), page.click('a:has-text("Alpenblick Hotels AG")')]);
+await shot('client.png', { fullPage: true });
+
+await browser.close();
+standIn.close();
+console.log(`screenshots saved in ${OUT.pathname}`);

@@ -1,0 +1,60 @@
+{
+  "description": "Example report bodies: 'valid' ones the center accepts (HTTP 202), 'invalid' ones it rejects (HTTP 400). Shared with the SDKs' tests.",
+  "valid": [
+    {
+      "name": "TYPO3 after saving the settings",
+      "body": {
+        "schema": 1,
+        "event": "settings_saved",
+        "site_url": "https://www.example.ch/",
+        "plugin": { "name": "Typo3-Supertext-Translation", "version": "0.4.0" },
+        "system": { "name": "TYPO3", "version": "13.4.2" },
+        "runtime": { "name": "PHP", "version": "8.3.12" },
+        "sdk_version": "0.3.0",
+        "api_key_configured": true
+      }
+    },
+    {
+      "name": "WordPress upgraded (system version changed)",
+      "body": {
+        "schema": 1,
+        "event": "upgraded",
+        "site_url": "https://shop.example.com/de",
+        "plugin": { "name": "supertext-wordpress-polylang", "version": "2.1.0" },
+        "system": { "name": "WordPress", "version": "6.9.0" },
+        "runtime": { "name": "PHP", "version": "8.4.1" }
+      }
+    },
+    {
+      "name": "Minimal report (only required fields)",
+      "body": {
+        "schema": 1,
+        "event": "installed",
+        "site_url": "https://cms.example.org",
+        "plugin": { "name": "Strapi-Supertext-Translation", "version": "0.2.0" },
+        "system": { "name": "Strapi" }
+      }
+    },
+    {
+      "name": "Unknown event and extra fields are accepted (forward compatible)",
+      "body": {
+        "schema": 1,
+        "event": "nightly_check",
+        "site_url": "https://example.net",
+        "plugin": { "name": "Grav-Supertext-Translation", "version": "0.1.0" },
+        "system": { "name": "Grav", "version": "2.0.0" },
+        "languages": ["de-CH", "fr-CH"]
+      }
+    }
+  ],
+  "invalid": [
+    { "name": "wrong schema", "body": { "schema": 2, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
+    { "name": "relative site_url", "body": { "schema": 1, "event": "check", "site_url": "example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
+    { "name": "missing plugin version", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X" }, "system": { "name": "X" } } },
+    { "name": "plugin name with a slash", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "Supertext/X", "version": "1.0.0" }, "system": { "name": "X" } } },
+    { "name": "missing system", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" } } },
+    { "name": "event with spaces", "body": { "schema": 1, "event": "settings saved", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
+    { "name": "control characters in a version", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0\n<script>" }, "system": { "name": "X" } } },
+    { "name": "array instead of object", "body": [] }
+  ]
+}

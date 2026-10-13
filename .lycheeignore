@@ -1,0 +1,4 @@
+# Local URLs and placeholders in the docs
+^https?://(localhost|127\.0\.0\.1)
+^https?://<
+^https://commando\.supertext\.com

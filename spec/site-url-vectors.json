@@ -1,0 +1,30 @@
+{
+  "description": "How the center normalizes site_url. Plugins send the URL as the system knows it; the center lower-cases scheme and host, drops default ports, user info, query, fragment and trailing slashes, and keeps a sub-path. A null result is rejected with HTTP 400. 'local' marks development and test hosts (shown separately in the center).",
+  "vectors": [
+    { "input": "https://www.Example.com/", "url": "https://www.example.com", "local": false },
+    { "input": "https://example.com", "url": "https://example.com", "local": false },
+    { "input": "HTTPS://EXAMPLE.COM:443/", "url": "https://example.com", "local": false },
+    { "input": "http://example.com:80", "url": "http://example.com", "local": false },
+    { "input": "https://example.com:8443/", "url": "https://example.com:8443", "local": false },
+    { "input": "https://example.com/de/shop/", "url": "https://example.com/de/shop", "local": false },
+    { "input": "https://example.com/admin/?lang=de#top", "url": "https://example.com/admin", "local": false },
+    { "input": "https://user:secret@example.com/", "url": "https://example.com", "local": false },
+    { "input": "  https://example.com/  ", "url": "https://example.com", "local": false },
+    { "input": "https://bücher.ch/", "url": "https://xn--bcher-kva.ch", "local": false },
+    { "input": "http://localhost:8080/", "url": "http://localhost:8080", "local": true },
+    { "input": "http://127.0.0.1/", "url": "http://127.0.0.1", "local": true },
+    { "input": "https://shop.ddev.site/", "url": "https://shop.ddev.site", "local": true },
+    { "input": "http://typo3.test", "url": "http://typo3.test", "local": true },
+    { "input": "http://cms.localhost", "url": "http://cms.localhost", "local": true },
+    { "input": "http://192.168.1.20/", "url": "http://192.168.1.20", "local": true },
+    { "input": "http://10.0.0.5:3000", "url": "http://10.0.0.5:3000", "local": true },
+    { "input": "http://172.20.0.3", "url": "http://172.20.0.3", "local": true },
+    { "input": "http://[::1]:8000/", "url": "http://[::1]:8000", "local": true },
+    { "input": "http://intranet.local/", "url": "http://intranet.local", "local": true },
+    { "input": "http://wiki/", "url": "http://wiki", "local": true },
+    { "input": "example.com", "url": null },
+    { "input": "ftp://example.com", "url": null },
+    { "input": "javascript:alert(1)", "url": null },
+    { "input": "", "url": null }
+  ]
+}
