@@ -64,6 +64,7 @@ Delete the Railway service, then the database: `DROP DATABASE commando;` on the 
 | *Wrong password* after a password change | Expected: sign in with the new password |
 | *Too many attempts* on login | 10 attempts per 15 minutes per IP address. Wait, or restart the service |
 | Healthcheck fails, log shows `DATABASE_URL is not set` | Set the variable (reference the Postgres service) |
+| A push to `main` doesn't deploy | Railway's GitHub app has no access to this repository: under https://github.com/organizations/Supertext/settings/installations → Railway → Configure, add `Commando-Center-Supertext-Translation`. Then reconnect the service's source once (Railway → service → Settings → Source), so Railway creates its push trigger again |
 | Log shows `permission denied to create database` | The Postgres user can't create databases: create `commando` by hand, or leave `COMMANDO_DB_NAME` empty and point `DATABASE_URL` at an existing database |
 | Every plugin version shows *no release* | GitHub can't be reached or the rate limit is used up: set `GITHUB_TOKEN`. Plugins without any GitHub release also show *no release* |
 | Every installation shows *not checked* under API key | Expected until the plugins have the version that checks the key; older plugin versions don't send a check |
