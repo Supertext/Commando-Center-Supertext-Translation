@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import examples from '../../spec/report-examples.json';
-import { parseReport } from '../../src/lib/report';
+import { parseApiKeyCheck, parseReport } from '../../src/lib/report';
 
 describe('parseReport (spec/report-examples.json)', () => {
   for (const ex of examples.valid) {
@@ -18,7 +18,7 @@ describe('parseReport (spec/report-examples.json)', () => {
   }
 
   it('maps the fields and normalizes the URL', () => {
-    const r = parseReport(examples.valid[0].body);
+    const r = parseReport(examples.valid[0].body, Date.parse('2026-10-13T12:00:00Z'));
     expect(r).toEqual({
       ok: true,
       report: {
@@ -33,12 +33,51 @@ describe('parseReport (spec/report-examples.json)', () => {
         runtimeVersion: '8.3.12',
         sdkVersion: '0.3.0',
         apiKeyConfigured: true,
+        apiKeyCheck: { status: 'ok', checkedAt: new Date('2026-10-13T07:15:00Z'), httpStatus: 200, errorCode: null },
       },
     });
   });
 
   it('leaves optional fields null when missing or of the wrong type', () => {
     const r = parseReport({ ...examples.valid[2].body, runtime: 'PHP', api_key_configured: 'yes' });
-    expect(r.ok && r.report).toMatchObject({ runtime: null, runtimeVersion: null, sdkVersion: null, apiKeyConfigured: null, systemVersion: null });
+    expect(r.ok && r.report).toMatchObject({ runtime: null, runtimeVersion: null, sdkVersion: null, apiKeyConfigured: null, systemVersion: null, apiKeyCheck: null });
+  });
+});
+
+describe('api_key_check (spec/report-examples.json → stored)', () => {
+  const NOW = Date.parse('2026-10-13T12:00:00Z');
+  for (const ex of examples.valid.filter((e) => 'stored' in e)) {
+    it(ex.name, () => {
+      const r = parseReport(ex.body, NOW);
+      expect(r.ok).toBe(true);
+      if (!r.ok) return;
+      const want = (ex as { stored: { api_key_check: Record<string, unknown> | null } }).stored.api_key_check;
+      const got = r.report.apiKeyCheck;
+      if (want === null) {
+        expect(got).toBeNull();
+        return;
+      }
+      expect(got).toMatchObject({ status: want.status, httpStatus: want.http_status, errorCode: want.error_code });
+      if (want.checked_at === '<receive time>') expect(got?.checkedAt).toBeNull();
+      else expect(got?.checkedAt?.toISOString()).toBe(want.checked_at);
+    });
+  }
+
+  it('uses the receive time for clocks in the future or the distant past', () => {
+    const now = Date.parse('2026-10-13T12:00:00Z');
+    expect(parseApiKeyCheck({ status: 'ok', checked_at: '2026-10-13T13:00:00Z' }, now)?.checkedAt).toBeNull();
+    expect(parseApiKeyCheck({ status: 'ok', checked_at: '1999-01-01T00:00:00Z' }, now)?.checkedAt).toBeNull();
+    expect(parseApiKeyCheck({ status: 'ok', checked_at: 'yesterday' }, now)?.checkedAt).toBeNull();
+    expect(parseApiKeyCheck({ status: 'ok', checked_at: '2026-10-13T12:03:00Z' }, now)?.checkedAt).toEqual(new Date('2026-10-13T12:03:00Z'));
+  });
+
+  it('drops malformed checks', () => {
+    for (const bad of [null, 'ok', [], {}, { status: 'OK' }, { status: 'ok', http_status: 99 }, { status: 'ok', http_status: 401.5 }, { status: 'ok', error_code: 'x\u0000' }]) {
+      expect(parseApiKeyCheck(bad)).toBeNull();
+    }
+  });
+
+  it('keeps unknown statuses for forward compatibility', () => {
+    expect(parseApiKeyCheck({ status: 'quota_exceeded' })?.status).toBe('quota_exceeded');
   });
 });

@@ -13,9 +13,21 @@ export interface Report {
   runtimeVersion: string | null;
   sdkVersion: string | null;
   apiKeyConfigured: boolean | null;
+  /** Latest automatic API key check, or null when the report has none (or a malformed one). */
+  apiKeyCheck: ApiKeyCheck | null;
 }
 
-export const KNOWN_EVENTS = ['installed', 'settings_saved', 'upgraded', 'check'] as const;
+export interface ApiKeyCheck {
+  status: string;
+  /** null: the center stores the time it received the report. */
+  checkedAt: Date | null;
+  httpStatus: number | null;
+  errorCode: string | null;
+}
+
+export const KEY_STATUSES = ['ok', 'invalid', 'missing', 'unreachable', 'error'] as const;
+
+export const KNOWN_EVENTS = ['installed', 'settings_saved', 'upgraded', 'api_key_check', 'check'] as const;
 export const MAX_BODY_BYTES = 8 * 1024;
 
 export type ParseResult = { ok: true; report: Report } | { ok: false; error: string };
@@ -35,7 +47,31 @@ function obj(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
 
-export function parseReport(body: unknown): ParseResult {
+const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
+
+/**
+ * The key check is optional extra information: a malformed one is dropped (null) instead of
+ * rejecting the whole report, so a plugin bug there never loses the version information.
+ */
+export function parseApiKeyCheck(value: unknown, now = Date.now()): ApiKeyCheck | null {
+  const c = obj(value);
+  const status = c && text(c.status, 40);
+  if (!c || !status || !/^[a-z_]+$/.test(status)) return null;
+  let checkedAt: Date | null = null;
+  if (typeof c.checked_at === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(c.checked_at)) {
+    const t = Date.parse(c.checked_at);
+    // A clock in the future or in the distant past isn't believable: use the receive time.
+    if (Number.isFinite(t) && t <= now + MAX_CLOCK_SKEW_MS && t >= Date.UTC(2020, 0, 1)) checkedAt = new Date(t);
+  }
+  const hs = c.http_status;
+  const httpStatus = Number.isInteger(hs) && (hs as number) >= 100 && (hs as number) <= 599 ? (hs as number) : null;
+  if (hs !== undefined && hs !== null && httpStatus === null) return null;
+  const code = c.error_code === undefined || c.error_code === null ? null : text(c.error_code, 100);
+  if (c.error_code !== undefined && c.error_code !== null && code === null) return null;
+  return { status, checkedAt, httpStatus, errorCode: code };
+}
+
+export function parseReport(body: unknown, now = Date.now()): ParseResult {
   const b = obj(body);
   if (!b) return { ok: false, error: 'Body must be a JSON object.' };
   if (b.schema !== 1) return { ok: false, error: 'Unsupported schema; expected "schema": 1.' };
@@ -71,6 +107,7 @@ export function parseReport(body: unknown): ParseResult {
       runtimeVersion: runtime ? text(runtime.version, 50) : null,
       sdkVersion: text(b.sdk_version, 50),
       apiKeyConfigured: typeof b.api_key_configured === 'boolean' ? b.api_key_configured : null,
+      apiKeyCheck: parseApiKeyCheck(b.api_key_check, now),
     },
   };
 }

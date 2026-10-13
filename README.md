@@ -4,10 +4,11 @@ Which Supertext plugin version does each customer site run, on which CMS, shop o
 
 - every installation, identified by its site URL, with the plugin, system and runtime versions it last reported
 - which installations have a plugin update available (compared with the latest GitHub release)
+- whether each site's Supertext API key works: the plugins check it automatically and report the result
 - the history of each installation: when the plugin, the system or the runtime was updated
 - manual mapping of installations to Supertext clients, with notes
 
-Plugins report when their settings are saved and after an update. Reporting is on by default and can be turned off in each plugin's settings. No content, API keys or personal data are sent.
+Plugins report when their settings are saved and after an update. Reporting is on by default and can be turned off in each plugin's settings. The key check runs in the plugin; only its result is sent. No content, API keys or personal data are sent.
 
 Next.js and PostgreSQL, deployed on Railway.
 

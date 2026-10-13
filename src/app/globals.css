@@ -15,6 +15,7 @@
   --info-bg: #e5edf9;
   --neutral-bg: #eceff3;
   --danger: #b42318;
+  --bad-bg: #fde8e6;
   --radius: 8px;
   --mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
   color-scheme: light;
@@ -38,6 +39,7 @@
     --info-bg: #182a47;
     --neutral-bg: #1d2a3d;
     --danger: #ff8a7a;
+    --bad-bg: #3d1a17;
     color-scheme: dark;
   }
 }
@@ -105,11 +107,16 @@ label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
 .table-wrap { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; }
-th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; white-space: nowrap; }
+th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); vertical-align: top; white-space: nowrap; }
 th { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .4px; }
 tr:last-child td { border-bottom: 0; }
 tbody tr:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-td.url { white-space: normal; word-break: break-all; min-width: 220px; }
+td.url { white-space: normal; overflow-wrap: anywhere; min-width: 180px; }
+td.stack > .row, td.stack { vertical-align: top; }
+td.stack .badge, td.stack > .badge { margin-top: 2px; }
+td.stack { white-space: normal; min-width: 110px; }
+td.stack .row { flex-wrap: wrap; }
+td.stack > .badge { display: table; }
 .mono { font-family: var(--mono); font-size: 13px; }
 .muted { color: var(--muted); }
 .small { font-size: 12px; }
@@ -119,6 +126,7 @@ td.url { white-space: normal; word-break: break-all; min-width: 220px; }
 .badge.current { background: var(--ok-bg); color: var(--ok); }
 .badge.outdated { background: var(--warn-bg); color: var(--warn); }
 .badge.ahead, .badge.local { background: var(--info-bg); color: var(--info); }
+.badge.bad { background: var(--bad-bg); color: var(--danger); }
 .badge.unknown, .badge.event { background: var(--neutral-bg); color: var(--muted); }
 
 dl.facts { display: grid; grid-template-columns: max-content 1fr; gap: 6px 20px; margin: 0; padding: 16px 20px; }

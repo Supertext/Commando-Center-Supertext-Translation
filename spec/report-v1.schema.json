@@ -9,10 +9,10 @@
   "properties": {
     "schema": { "const": 1 },
     "event": {
-      "description": "Why the report is sent: installed, settings_saved, upgraded (plugin, system or runtime version changed since the last report) or check (sent by a command or test). Other values are stored as given.",
+      "description": "Why the report is sent: installed, settings_saved, upgraded (plugin, system or runtime version changed since the last report), api_key_check (the API key check result changed outside a settings save, e.g. a new key from the environment or a translation rejected with 401) or check (sent by a command or test). Other values are stored as given.",
       "type": "string",
       "pattern": "^[a-z_]{1,40}$",
-      "examples": ["installed", "settings_saved", "upgraded", "check"]
+      "examples": ["installed", "settings_saved", "upgraded", "api_key_check", "check"]
     },
     "site_url": {
       "description": "Base URL of the installation (the site or back end the plugin runs in). It identifies the installation; the center normalizes it (see site-url-vectors.json).",
@@ -46,6 +46,22 @@
       }
     },
     "sdk_version": { "description": "Version of the bundled Supertext SDK, if any.", "type": "string", "maxLength": 50 },
-    "api_key_configured": { "description": "Whether a Supertext API key is set. Never the key itself.", "type": "boolean" }
+    "api_key_configured": { "description": "Whether a Supertext API key is set. Never the key itself.", "type": "boolean" },
+    "api_key_check": {
+      "description": "Result of the plugin's latest automatic API key check (cost-free GET features against the Supertext API). Never the key itself.",
+      "type": "object",
+      "required": ["status"],
+      "properties": {
+        "status": {
+          "description": "ok: Supertext accepted the key. invalid: Supertext rejected it (HTTP 401/403). missing: no key is set. unreachable: Supertext couldn't be reached (network error, timeout, HTTP 5xx). error: any other answer (http_status says which). Other values are stored as given.",
+          "type": "string",
+          "pattern": "^[a-z_]{1,40}$",
+          "examples": ["ok", "invalid", "missing", "unreachable", "error"]
+        },
+        "checked_at": { "description": "When the check ran (ISO 8601 with time zone). Missing: the center uses the time it received the report.", "type": "string", "format": "date-time" },
+        "http_status": { "description": "HTTP status Supertext answered with, if any.", "type": "integer", "minimum": 100, "maximum": 599 },
+        "error_code": { "description": "Supertext's error code from the response body, if any (e.g. INVALID_API_KEY).", "type": "string", "maxLength": 100 }
+      }
+    }
   }
 }

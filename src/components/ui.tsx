@@ -65,5 +65,57 @@ export const EVENT_LABEL: Record<string, string> = {
   installed: 'installed',
   settings_saved: 'settings saved',
   upgraded: 'upgraded',
+  api_key_check: 'key checked',
   check: 'check',
 };
+
+const KEY_LABEL: Record<string, { label: string; cls: string; hint: string }> = {
+  ok: { label: 'key ok', cls: 'current', hint: 'Supertext accepted the API key' },
+  invalid: { label: 'key rejected', cls: 'bad', hint: 'Supertext rejected the API key (HTTP 401/403)' },
+  missing: { label: 'no key', cls: 'bad', hint: 'No API key is set' },
+  unreachable: { label: 'Supertext unreachable', cls: 'outdated', hint: "The plugin couldn't reach Supertext to check the key" },
+  error: { label: 'check failed', cls: 'outdated', hint: 'Supertext answered the check with an unexpected error' },
+};
+
+/** Result of the plugin's latest automatic API key check. */
+export function KeyStatus({
+  status,
+  checkedAt,
+  httpStatus,
+  errorCode,
+}: {
+  status: string | null;
+  checkedAt?: Date | string | null;
+  httpStatus?: number | null;
+  errorCode?: string | null;
+}) {
+  if (!status) {
+    return (
+      <span className="badge unknown" title="This plugin version doesn't send an API key check yet">
+        not checked
+      </span>
+    );
+  }
+  const k = KEY_LABEL[status] ?? { label: status, cls: 'outdated', hint: 'Unknown check result' };
+  const detail = [httpStatus ? `HTTP ${httpStatus}` : '', errorCode ?? ''].filter(Boolean).join(', ');
+  const title = [k.hint, detail, checkedAt ? `checked ${formatDate(checkedAt)}` : ''].filter(Boolean).join(' · ');
+  return (
+    <span className={`badge ${k.cls}`} title={title}>
+      {k.label}
+      {status === 'error' && httpStatus ? ` (${httpStatus})` : ''}
+    </span>
+  );
+}
+
+const KEY_WORD: Record<string, string> = {
+  ok: 'ok',
+  invalid: 'rejected',
+  missing: 'missing',
+  unreachable: 'not checked (Supertext unreachable)',
+  error: 'check failed',
+};
+
+/** Short wording for history lines: "API key rejected → ok". */
+export function keyStatusWord(status: string | null): string {
+  return status ? (KEY_WORD[status] ?? status) : 'not checked';
+}

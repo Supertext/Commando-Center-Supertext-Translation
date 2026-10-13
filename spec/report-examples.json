@@ -1,5 +1,5 @@
 {
-  "description": "Example report bodies: 'valid' ones the center accepts (HTTP 202), 'invalid' ones it rejects (HTTP 400). Shared with the SDKs' tests.",
+  "description": "Example report bodies: 'valid' ones the center accepts (HTTP 202), 'invalid' ones it rejects (HTTP 400). 'stored' shows what the center keeps of api_key_check where it matters. Shared with the SDKs' tests.",
   "valid": [
     {
       "name": "TYPO3 after saving the settings",
@@ -7,11 +7,33 @@
         "schema": 1,
         "event": "settings_saved",
         "site_url": "https://www.example.ch/",
-        "plugin": { "name": "Typo3-Supertext-Translation", "version": "0.4.0" },
-        "system": { "name": "TYPO3", "version": "13.4.2" },
-        "runtime": { "name": "PHP", "version": "8.3.12" },
+        "plugin": {
+          "name": "Typo3-Supertext-Translation",
+          "version": "0.4.0"
+        },
+        "system": {
+          "name": "TYPO3",
+          "version": "13.4.2"
+        },
+        "runtime": {
+          "name": "PHP",
+          "version": "8.3.12"
+        },
         "sdk_version": "0.3.0",
-        "api_key_configured": true
+        "api_key_configured": true,
+        "api_key_check": {
+          "status": "ok",
+          "checked_at": "2026-10-13T09:15:00+02:00",
+          "http_status": 200
+        }
+      },
+      "stored": {
+        "api_key_check": {
+          "status": "ok",
+          "checked_at": "2026-10-13T07:15:00.000Z",
+          "http_status": 200,
+          "error_code": null
+        }
       }
     },
     {
@@ -20,9 +42,18 @@
         "schema": 1,
         "event": "upgraded",
         "site_url": "https://shop.example.com/de",
-        "plugin": { "name": "supertext-wordpress-polylang", "version": "2.1.0" },
-        "system": { "name": "WordPress", "version": "6.9.0" },
-        "runtime": { "name": "PHP", "version": "8.4.1" }
+        "plugin": {
+          "name": "supertext-wordpress-polylang",
+          "version": "2.1.0"
+        },
+        "system": {
+          "name": "WordPress",
+          "version": "6.9.0"
+        },
+        "runtime": {
+          "name": "PHP",
+          "version": "8.4.1"
+        }
       }
     },
     {
@@ -31,8 +62,13 @@
         "schema": 1,
         "event": "installed",
         "site_url": "https://cms.example.org",
-        "plugin": { "name": "Strapi-Supertext-Translation", "version": "0.2.0" },
-        "system": { "name": "Strapi" }
+        "plugin": {
+          "name": "Strapi-Supertext-Translation",
+          "version": "0.2.0"
+        },
+        "system": {
+          "name": "Strapi"
+        }
       }
     },
     {
@@ -41,20 +77,211 @@
         "schema": 1,
         "event": "nightly_check",
         "site_url": "https://example.net",
-        "plugin": { "name": "Grav-Supertext-Translation", "version": "0.1.0" },
-        "system": { "name": "Grav", "version": "2.0.0" },
-        "languages": ["de-CH", "fr-CH"]
+        "plugin": {
+          "name": "Grav-Supertext-Translation",
+          "version": "0.1.0"
+        },
+        "system": {
+          "name": "Grav",
+          "version": "2.0.0"
+        },
+        "languages": [
+          "de-CH",
+          "fr-CH"
+        ]
+      }
+    },
+    {
+      "name": "Key rejected during a translation (event api_key_check)",
+      "body": {
+        "schema": 1,
+        "event": "api_key_check",
+        "site_url": "https://www.example.ch",
+        "plugin": {
+          "name": "Contao-Supertext-Translation",
+          "version": "0.3.1"
+        },
+        "system": {
+          "name": "Contao",
+          "version": "5.7.1"
+        },
+        "runtime": {
+          "name": "PHP",
+          "version": "8.3.12"
+        },
+        "api_key_configured": true,
+        "api_key_check": {
+          "status": "invalid",
+          "checked_at": "2026-10-13T10:02:11Z",
+          "http_status": 401,
+          "error_code": "INVALID_API_KEY"
+        }
+      },
+      "stored": {
+        "api_key_check": {
+          "status": "invalid",
+          "checked_at": "2026-10-13T10:02:11.000Z",
+          "http_status": 401,
+          "error_code": "INVALID_API_KEY"
+        }
+      }
+    },
+    {
+      "name": "Supertext unreachable, no checked_at (the center uses the receive time)",
+      "body": {
+        "schema": 1,
+        "event": "settings_saved",
+        "site_url": "https://cms.example.org",
+        "plugin": {
+          "name": "Strapi-Supertext-Translation",
+          "version": "0.2.0"
+        },
+        "system": {
+          "name": "Strapi",
+          "version": "5.12.0"
+        },
+        "api_key_configured": true,
+        "api_key_check": {
+          "status": "unreachable"
+        }
+      },
+      "stored": {
+        "api_key_check": {
+          "status": "unreachable",
+          "checked_at": "<receive time>",
+          "http_status": null,
+          "error_code": null
+        }
+      }
+    },
+    {
+      "name": "Malformed api_key_check is ignored, the rest is stored",
+      "body": {
+        "schema": 1,
+        "event": "settings_saved",
+        "site_url": "https://cms.example.net",
+        "plugin": {
+          "name": "Strapi-Supertext-Translation",
+          "version": "0.2.0"
+        },
+        "system": {
+          "name": "Strapi"
+        },
+        "api_key_check": {
+          "status": "Not OK!",
+          "http_status": "401"
+        }
+      },
+      "stored": {
+        "api_key_check": null
       }
     }
   ],
   "invalid": [
-    { "name": "wrong schema", "body": { "schema": 2, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
-    { "name": "relative site_url", "body": { "schema": 1, "event": "check", "site_url": "example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
-    { "name": "missing plugin version", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X" }, "system": { "name": "X" } } },
-    { "name": "plugin name with a slash", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "Supertext/X", "version": "1.0.0" }, "system": { "name": "X" } } },
-    { "name": "missing system", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" } } },
-    { "name": "event with spaces", "body": { "schema": 1, "event": "settings saved", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0" }, "system": { "name": "X" } } },
-    { "name": "control characters in a version", "body": { "schema": 1, "event": "check", "site_url": "https://example.com", "plugin": { "name": "X", "version": "1.0.0\n<script>" }, "system": { "name": "X" } } },
-    { "name": "array instead of object", "body": [] }
+    {
+      "name": "wrong schema",
+      "body": {
+        "schema": 2,
+        "event": "check",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "X",
+          "version": "1.0.0"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "relative site_url",
+      "body": {
+        "schema": 1,
+        "event": "check",
+        "site_url": "example.com",
+        "plugin": {
+          "name": "X",
+          "version": "1.0.0"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "missing plugin version",
+      "body": {
+        "schema": 1,
+        "event": "check",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "X"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "plugin name with a slash",
+      "body": {
+        "schema": 1,
+        "event": "check",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "Supertext/X",
+          "version": "1.0.0"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "missing system",
+      "body": {
+        "schema": 1,
+        "event": "check",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "X",
+          "version": "1.0.0"
+        }
+      }
+    },
+    {
+      "name": "event with spaces",
+      "body": {
+        "schema": 1,
+        "event": "settings saved",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "X",
+          "version": "1.0.0"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "control characters in a version",
+      "body": {
+        "schema": 1,
+        "event": "check",
+        "site_url": "https://example.com",
+        "plugin": {
+          "name": "X",
+          "version": "1.0.0\n<script>"
+        },
+        "system": {
+          "name": "X"
+        }
+      }
+    },
+    {
+      "name": "array instead of object",
+      "body": []
+    }
   ]
 }

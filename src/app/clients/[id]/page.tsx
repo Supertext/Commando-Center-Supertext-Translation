@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { requireAuth } from '@/lib/session';
 import { getClient, listInstallations } from '@/lib/db';
 import { latestReleases } from '@/lib/releases';
-import { NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
+import { KeyStatus, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
 import ConfirmButton from '@/components/confirm-button';
 import { removeClient, saveClient } from '../../actions';
 
@@ -49,6 +49,7 @@ export default async function ClientPage({
                 <th>Site</th>
                 <th>Plugin</th>
                 <th>Plugin version</th>
+                <th>API key</th>
                 <th>System</th>
                 <th>Runtime</th>
                 <th>Last report</th>
@@ -66,6 +67,9 @@ export default async function ClientPage({
                   <td>{i.plugin.replace(/-Supertext-Translation$/, '')}</td>
                   <td>
                     <PluginVersion plugin={i.plugin} version={i.plugin_version} latest={latest.get(i.plugin) ?? null} />
+                  </td>
+                  <td>
+                    <KeyStatus status={i.api_key_status} checkedAt={i.api_key_checked_at} httpStatus={i.api_key_http_status} errorCode={i.api_key_error_code} />
                   </td>
                   <td>
                     <NameVersion name={i.system} version={i.system_version} />

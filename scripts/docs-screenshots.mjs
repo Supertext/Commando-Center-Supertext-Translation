@@ -42,24 +42,30 @@ async function report(body) {
   if (res.status !== 202) throw new Error(`report failed: ${res.status} ${await res.text()}`);
 }
 
-const wp = (system, plugin, event) => ({
+const ago = (min) => new Date(Date.now() - min * 60_000).toISOString();
+const check = (status, min, extra = {}) => ({ api_key_check: { status, checked_at: ago(min), ...extra } });
+const wp = (system, plugin, event, extra = {}) => ({
   event,
   site_url: 'https://www.alpenblick-hotels.example.ch/',
   plugin: { name: 'supertext-wordpress-polylang', version: plugin },
   system: { name: 'WordPress', version: system },
   runtime: { name: 'PHP', version: '8.3.12' },
   api_key_configured: true,
+  ...extra,
 });
+// Each sample's API key check result, so the screenshots show every status:
+// ok, rejected (wrong key pasted, then fixed; a revoked key), unreachable, no key, not checked (older plugin).
 const samples = [
-  wp('6.8.3', '2.0.0', 'installed'),
-  wp('6.8.3', '2.0.0', 'settings_saved'),
+  wp('6.8.3', '2.0.0', 'installed', check('invalid', 9, { http_status: 401, error_code: 'INVALID_API_KEY' })),
+  wp('6.8.3', '2.0.0', 'settings_saved', check('ok', 8, { http_status: 200 })),
   wp('6.9.0', '2.0.0', 'upgraded'),
   wp('6.9.0', '2.1.0', 'upgraded'),
-  { event: 'settings_saved', site_url: 'https://staging.alpenblick-hotels.example.ch', plugin: { name: 'supertext-wordpress-polylang', version: '2.0.0' }, system: { name: 'WordPress', version: '6.8.3' }, runtime: { name: 'PHP', version: '8.2.20' }, api_key_configured: true },
-  { event: 'upgraded', site_url: 'https://www.bergbahnen-muster.example.ch/', plugin: { name: 'Typo3-Supertext-Translation', version: '0.3.0' }, system: { name: 'TYPO3', version: '13.4.2' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true },
-  { event: 'installed', site_url: 'https://shop.velo-beispiel.example.com/de/', plugin: { name: 'Magento-Supertext-Translation', version: '0.3.0' }, system: { name: 'Magento', version: '2.4.8' }, runtime: { name: 'PHP', version: '8.4.1' }, api_key_configured: false },
+  { event: 'settings_saved', site_url: 'https://staging.alpenblick-hotels.example.ch', plugin: { name: 'supertext-wordpress-polylang', version: '2.0.0' }, system: { name: 'WordPress', version: '6.8.3' }, runtime: { name: 'PHP', version: '8.2.20' }, api_key_configured: true, ...check('unreachable', 6) },
+  { event: 'upgraded', site_url: 'https://www.bergbahnen-muster.example.ch/', plugin: { name: 'Typo3-Supertext-Translation', version: '0.3.0' }, system: { name: 'TYPO3', version: '13.4.2' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 5, { http_status: 200 }) },
+  { event: 'installed', site_url: 'https://shop.velo-beispiel.example.com/de/', plugin: { name: 'Magento-Supertext-Translation', version: '0.3.0' }, system: { name: 'Magento', version: '2.4.8' }, runtime: { name: 'PHP', version: '8.4.1' }, api_key_configured: false, ...check('missing', 4) },
   { event: 'settings_saved', site_url: 'https://cms.uhrenmanufaktur.example.org', plugin: { name: 'Strapi-Supertext-Translation', version: '0.2.0' }, system: { name: 'Strapi', version: '5.12.0' }, runtime: { name: 'Node.js', version: '22.11.0' }, sdk_version: '0.3.0', api_key_configured: true },
-  { event: 'settings_saved', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true },
+  { event: 'settings_saved', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('ok', 3, { http_status: 200 }) },
+  { event: 'api_key_check', site_url: 'https://www.kanton-musterland.example.ch/', plugin: { name: 'Contao-Supertext-Translation', version: '0.2.0' }, system: { name: 'Contao', version: '5.7.1' }, runtime: { name: 'PHP', version: '8.3.12' }, sdk_version: '0.2.0', api_key_configured: true, ...check('invalid', 1, { http_status: 403, error_code: 'API_KEY_REVOKED' }) },
 ];
 for (const s of samples) await report(s);
 
@@ -91,6 +97,8 @@ await page.goto(`${BASE}/`);
 await shot('installations.png', { fullPage: true });
 await page.goto(`${BASE}/?status=outdated`);
 await shot('installations-outdated.png', { clip: { x: 0, y: 0, width: 1360, height: 520 } });
+await page.goto(`${BASE}/?key=problem`);
+await shot('installations-key-problems.png', { clip: { x: 0, y: 0, width: 1360, height: 560 } });
 
 await page.goto(`${BASE}/`);
 await page.click('a:has-text("www.alpenblick-hotels")');

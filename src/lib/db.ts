@@ -28,6 +28,10 @@ export interface Installation {
   runtime_version: string | null;
   sdk_version: string | null;
   api_key_configured: boolean | null;
+  api_key_status: string | null;
+  api_key_checked_at: Date | null;
+  api_key_http_status: number | null;
+  api_key_error_code: string | null;
   last_event: string;
   first_seen: Date;
   last_seen: Date;
@@ -43,6 +47,10 @@ export interface ReportRow {
   runtime_version: string | null;
   sdk_version: string | null;
   api_key_configured: boolean | null;
+  api_key_status: string | null;
+  api_key_checked_at: Date | null;
+  api_key_http_status: number | null;
+  api_key_error_code: string | null;
   changed: boolean;
 }
 
@@ -57,17 +65,34 @@ export interface Client {
 /** Stores a report: creates or updates the installation and appends to its history. */
 export async function recordReport(r: Report, sql: Sql = db()): Promise<{ installationId: number; created: boolean; changed: boolean }> {
   return sql.begin(async (tx) => {
+    const [{ now }] = await tx<{ now: Date }[]>`SELECT now() AS now`;
+    const check = r.apiKeyCheck ? { ...r.apiKeyCheck, checkedAt: r.apiKeyCheck.checkedAt ?? now } : null;
     const [existing] = await tx<Installation[]>`
       SELECT * FROM installations WHERE site_url = ${r.siteUrl} AND plugin = ${r.plugin} FOR UPDATE`;
+
+    // The installation keeps the newest check: a report without one (older plugin, or an upgrade
+    // report) or with an older one leaves the stored result alone.
+    const newer = check && (!existing?.api_key_checked_at || check.checkedAt >= existing.api_key_checked_at);
+    const key = newer
+      ? { status: check.status, checkedAt: check.checkedAt, httpStatus: check.httpStatus, errorCode: check.errorCode }
+      : {
+          status: existing?.api_key_status ?? null,
+          checkedAt: existing?.api_key_checked_at ?? null,
+          httpStatus: existing?.api_key_http_status ?? null,
+          errorCode: existing?.api_key_error_code ?? null,
+        };
+
     let id: number;
     let changed: boolean;
     if (!existing) {
       const [row] = await tx<{ id: number }[]>`
         INSERT INTO installations (site_url, plugin, local, plugin_version, system, system_version, runtime,
-          runtime_version, sdk_version, api_key_configured, last_event)
+          runtime_version, sdk_version, api_key_configured, api_key_status, api_key_checked_at, api_key_http_status,
+          api_key_error_code, last_event)
         VALUES (${r.siteUrl}, ${r.plugin}, ${r.local}, ${r.pluginVersion}, ${r.system}, ${r.systemVersion},
-          ${r.runtime}, ${r.runtimeVersion}, ${r.sdkVersion}, ${r.apiKeyConfigured}, ${r.event})
-        ON CONFLICT (site_url, plugin) DO UPDATE SET last_seen = now()
+          ${r.runtime}, ${r.runtimeVersion}, ${r.sdkVersion}, ${r.apiKeyConfigured}, ${key.status}, ${key.checkedAt},
+          ${key.httpStatus}, ${key.errorCode}, ${r.event})
+        ON CONFLICT (site_url, plugin) DO UPDATE SET last_seen = ${now}
         RETURNING id`;
       id = row.id;
       changed = true;
@@ -80,19 +105,24 @@ export async function recordReport(r: Report, sql: Sql = db()): Promise<{ instal
         existing.runtime !== r.runtime ||
         existing.runtime_version !== r.runtimeVersion ||
         existing.sdk_version !== r.sdkVersion ||
-        existing.api_key_configured !== r.apiKeyConfigured;
+        existing.api_key_configured !== r.apiKeyConfigured ||
+        existing.api_key_status !== key.status;
       await tx`
         UPDATE installations SET plugin_version = ${r.pluginVersion}, system = ${r.system},
           system_version = ${r.systemVersion}, runtime = ${r.runtime}, runtime_version = ${r.runtimeVersion},
           sdk_version = ${r.sdkVersion}, api_key_configured = ${r.apiKeyConfigured}, local = ${r.local},
-          last_event = ${r.event}, last_seen = now(), report_count = report_count + 1
+          api_key_status = ${key.status}, api_key_checked_at = ${key.checkedAt},
+          api_key_http_status = ${key.httpStatus}, api_key_error_code = ${key.errorCode},
+          last_event = ${r.event}, last_seen = ${now}, report_count = report_count + 1
         WHERE id = ${id}`;
     }
     await tx`
-      INSERT INTO reports (installation_id, event, plugin_version, system_version, runtime_version, sdk_version,
-        api_key_configured, changed)
-      VALUES (${id}, ${r.event}, ${r.pluginVersion}, ${r.systemVersion}, ${r.runtimeVersion}, ${r.sdkVersion},
-        ${r.apiKeyConfigured}, ${changed})`;
+      INSERT INTO reports (installation_id, received_at, event, plugin_version, system_version, runtime_version,
+        sdk_version, api_key_configured, api_key_status, api_key_checked_at, api_key_http_status, api_key_error_code,
+        changed)
+      VALUES (${id}, ${now}, ${r.event}, ${r.pluginVersion}, ${r.systemVersion}, ${r.runtimeVersion}, ${r.sdkVersion},
+        ${r.apiKeyConfigured}, ${check?.status ?? null}, ${check?.checkedAt ?? null}, ${check?.httpStatus ?? null},
+        ${check?.errorCode ?? null}, ${changed})`;
     return { installationId: id, created: !existing, changed };
   });
 }
@@ -102,6 +132,8 @@ export interface InstallationFilter {
   plugin?: string;
   clientId?: number | 'none';
   includeLocal?: boolean;
+  /** 'problem': any check result other than ok; 'unchecked': no check reported yet; or one status. */
+  keyStatus?: string;
 }
 
 export async function listInstallations(f: InstallationFilter = {}, sql: Sql = db()): Promise<Installation[]> {
@@ -113,6 +145,15 @@ export async function listInstallations(f: InstallationFilter = {}, sql: Sql = d
       ${f.includeLocal ? sql`` : sql`AND NOT i.local`}
       ${f.plugin ? sql`AND i.plugin = ${f.plugin}` : sql``}
       ${f.clientId === 'none' ? sql`AND i.client_id IS NULL` : f.clientId ? sql`AND i.client_id = ${f.clientId}` : sql``}
+      ${
+        f.keyStatus === 'problem'
+          ? sql`AND i.api_key_status IS NOT NULL AND i.api_key_status <> 'ok'`
+          : f.keyStatus === 'unchecked'
+            ? sql`AND i.api_key_status IS NULL`
+            : f.keyStatus
+              ? sql`AND i.api_key_status = ${f.keyStatus}`
+              : sql``
+      }
       ${like ? sql`AND (i.site_url ILIKE ${like} OR c.name ILIKE ${like} OR i.system ILIKE ${like} OR i.notes ILIKE ${like})` : sql``}
     ORDER BY i.last_seen DESC
     LIMIT 2000`;
@@ -131,7 +172,8 @@ export async function getInstallation(id: number, sql: Sql = db()): Promise<Inst
 
 export async function installationHistory(id: number, limit = 200, sql: Sql = db()): Promise<ReportRow[]> {
   return sql<ReportRow[]>`
-    SELECT id, received_at, event, plugin_version, system_version, runtime_version, sdk_version, api_key_configured, changed
+    SELECT id, received_at, event, plugin_version, system_version, runtime_version, sdk_version, api_key_configured,
+      api_key_status, api_key_checked_at, api_key_http_status, api_key_error_code, changed
     FROM reports WHERE installation_id = ${id} ORDER BY received_at DESC, id DESC LIMIT ${limit}`;
 }
 

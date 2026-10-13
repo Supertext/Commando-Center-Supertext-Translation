@@ -3,15 +3,17 @@ import { notFound } from 'next/navigation';
 import { requireAuth } from '@/lib/session';
 import { getInstallation, installationHistory, listClients, type Installation, type ReportRow } from '@/lib/db';
 import { latestRelease, repoUrl } from '@/lib/releases';
-import { EVENT_LABEL, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
+import { EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate, keyStatusWord } from '@/components/ui';
 import ConfirmButton from '@/components/confirm-button';
 import { removeInstallation, saveInstallation } from '../../actions';
 
 export const dynamic = 'force-dynamic';
 
-/** What changed in a report compared with the one before it. */
-function changes(row: ReportRow, before: ReportRow | undefined, i: Installation): string[] {
-  if (!before) return ['first report'];
+/** What changed in a report compared with the reports before it (history is newest first). */
+function changes(history: ReportRow[], k: number, i: Installation): string[] {
+  const row = history[k];
+  const before = history[k + 1];
+  if (!before) return row.api_key_status ? ['first report', `API key ${keyStatusWord(row.api_key_status)}`] : ['first report'];
   const out: string[] = [];
   const diff = (label: string, a: string | null, b: string | null) => {
     if (a !== b) out.push(`${label} ${a ?? '–'} → ${b ?? '–'}`);
@@ -20,8 +22,15 @@ function changes(row: ReportRow, before: ReportRow | undefined, i: Installation)
   diff(i.system, before.system_version, row.system_version);
   diff(i.runtime ?? 'Runtime', before.runtime_version, row.runtime_version);
   diff('SDK', before.sdk_version, row.sdk_version);
-  if (before.api_key_configured !== row.api_key_configured) {
+  if (before.api_key_configured !== row.api_key_configured && row.api_key_configured !== null) {
     out.push(row.api_key_configured ? 'API key set' : 'API key removed');
+  }
+  // Reports without a check (e.g. upgrades) don't change the key status: compare with the last check before.
+  if (row.api_key_status) {
+    const prev = history.slice(k + 1).find((h) => h.api_key_status)?.api_key_status ?? null;
+    if (prev !== row.api_key_status) {
+      out.push(prev ? `API key ${keyStatusWord(prev)} → ${keyStatusWord(row.api_key_status)}` : `API key ${keyStatusWord(row.api_key_status)}`);
+    }
   }
   return out;
 }
@@ -88,7 +97,25 @@ export default async function InstallationPage({
             <dt>SDK</dt>
             <dd className="mono">{i.sdk_version ?? '–'}</dd>
             <dt>API key</dt>
-            <dd>{i.api_key_configured === null ? '–' : i.api_key_configured ? 'configured' : 'not configured'}</dd>
+            <dd>
+              <span className="row" style={{ gap: 6 }}>
+                <KeyStatus
+                  status={i.api_key_status}
+                  checkedAt={i.api_key_checked_at}
+                  httpStatus={i.api_key_http_status}
+                  errorCode={i.api_key_error_code}
+                />
+                {i.api_key_checked_at && <span className="muted small">checked {formatDate(i.api_key_checked_at)}</span>}
+                {(i.api_key_http_status || i.api_key_error_code) && i.api_key_status !== 'ok' && (
+                  <span className="mono small">
+                    {[i.api_key_http_status ? `HTTP ${i.api_key_http_status}` : '', i.api_key_error_code ?? ''].filter(Boolean).join(' ')}
+                  </span>
+                )}
+                {!i.api_key_status && i.api_key_configured !== null && (
+                  <span className="muted small">{i.api_key_configured ? 'set' : 'not set'}</span>
+                )}
+              </span>
+            </dd>
             <dt>Last report</dt>
             <dd>
               {formatDate(i.last_seen)} ({ago(i.last_seen)}), {EVENT_LABEL[i.last_event] ?? i.last_event}
@@ -140,12 +167,13 @@ export default async function InstallationPage({
               <th>Plugin</th>
               <th>{i.system}</th>
               <th>{i.runtime ?? 'Runtime'}</th>
+              <th>API key</th>
               <th>Changes</th>
             </tr>
           </thead>
           <tbody>
             {history.map((r, k) => {
-              const c = changes(r, history[k + 1], i);
+              const c = changes(history, k, i);
               return (
                 <tr key={r.id}>
                   <td>{formatDate(r.received_at)}</td>
@@ -155,6 +183,18 @@ export default async function InstallationPage({
                   <td className="mono">{r.plugin_version}</td>
                   <td className="mono">{r.system_version ?? '–'}</td>
                   <td className="mono">{r.runtime_version ?? '–'}</td>
+                  <td>
+                    {r.api_key_status ? (
+                      <KeyStatus
+                        status={r.api_key_status}
+                        checkedAt={r.api_key_checked_at}
+                        httpStatus={r.api_key_http_status}
+                        errorCode={r.api_key_error_code}
+                      />
+                    ) : (
+                      <span className="muted">–</span>
+                    )}
+                  </td>
                   <td className={c.length ? '' : 'muted'} style={{ whiteSpace: 'normal' }}>
                     {c.length ? c.join(', ') : 'no change'}
                   </td>

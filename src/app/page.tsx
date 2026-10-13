@@ -3,7 +3,7 @@ import { requireAuth } from '@/lib/session';
 import { listClients, listInstallations, listPlugins } from '@/lib/db';
 import { latestReleases, repoUrl } from '@/lib/releases';
 import { versionStatus } from '@/lib/semver';
-import { EVENT_LABEL, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
+import { EVENT_LABEL, KeyStatus, NameVersion, PluginVersion, ago, formatDate } from '@/components/ui';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,10 +21,11 @@ export default async function InstallationsPage({ searchParams }: { searchParams
   const client = one(sp.client);
   const status = one(sp.status);
   const includeLocal = one(sp.local) === '1';
+  const key = one(sp.key);
 
   const clientId = client === 'none' ? 'none' : Number(client) > 0 ? Number(client) : undefined;
   const [all, plugins, clients] = await Promise.all([
-    listInstallations({ q, plugin: plugin || undefined, clientId, includeLocal }),
+    listInstallations({ q, plugin: plugin || undefined, clientId, includeLocal, keyStatus: key || undefined }),
     listPlugins(),
     listClients(),
   ]);
@@ -36,6 +37,7 @@ export default async function InstallationsPage({ searchParams }: { searchParams
   const stats = [
     { n: withStatus.length, l: 'installations' },
     { n: withStatus.filter((i) => i.status === 'outdated').length, l: 'with a plugin update available' },
+    { n: withStatus.filter((i) => i.api_key_status && i.api_key_status !== 'ok').length, l: 'with an API key problem' },
     { n: withStatus.filter((i) => !i.client_id).length, l: 'not mapped to a client' },
     { n: withStatus.filter((i) => new Date(i.last_seen).getTime() >= monthAgo).length, l: 'reported in the last 30 days' },
   ];
@@ -79,11 +81,19 @@ export default async function InstallationsPage({ searchParams }: { searchParams
           <option value="current">Latest</option>
           <option value="unknown">No release</option>
         </select>
+        <select name="key" defaultValue={key} aria-label="API key check">
+          <option value="">Any API key</option>
+          <option value="problem">Key problem</option>
+          <option value="ok">Key ok</option>
+          <option value="invalid">Key rejected</option>
+          <option value="missing">No key</option>
+          <option value="unchecked">Not checked</option>
+        </select>
         <label className="check">
           <input type="checkbox" name="local" value="1" defaultChecked={includeLocal} /> Show local and test hosts
         </label>
         <button type="submit">Filter</button>
-        {(q || plugin || client || status || includeLocal) && (
+        {(q || plugin || client || status || key || includeLocal) && (
           <Link className="link" href="/">
             Reset
           </Link>
@@ -93,7 +103,7 @@ export default async function InstallationsPage({ searchParams }: { searchParams
       <div className="card table-wrap">
         {rows.length === 0 ? (
           <p className="empty">
-            {all.length === 0 && !q && !plugin && !client
+            {all.length === 0 && !q && !plugin && !client && !key
               ? 'No reports yet. Installations appear here once a plugin saves its settings or is updated.'
               : 'No installation matches these filters.'}
           </p>
@@ -105,6 +115,7 @@ export default async function InstallationsPage({ searchParams }: { searchParams
                 <th>Client</th>
                 <th>Plugin</th>
                 <th>Plugin version</th>
+                <th>API key</th>
                 <th>System</th>
                 <th>Runtime</th>
                 <th>Last report</th>
@@ -133,8 +144,16 @@ export default async function InstallationsPage({ searchParams }: { searchParams
                       {i.plugin.replace(/-Supertext-Translation$/, '')}
                     </a>
                   </td>
-                  <td>
+                  <td className="stack">
                     <PluginVersion plugin={i.plugin} version={i.plugin_version} latest={latest.get(i.plugin) ?? null} />
+                  </td>
+                  <td>
+                    <KeyStatus
+                      status={i.api_key_status}
+                      checkedAt={i.api_key_checked_at}
+                      httpStatus={i.api_key_http_status}
+                      errorCode={i.api_key_error_code}
+                    />
                   </td>
                   <td>
                     <NameVersion name={i.system} version={i.system_version} />
@@ -142,8 +161,9 @@ export default async function InstallationsPage({ searchParams }: { searchParams
                   <td>
                     <NameVersion name={i.runtime} version={i.runtime_version} />
                   </td>
-                  <td title={formatDate(i.last_seen)}>
-                    {ago(i.last_seen)} <span className="badge event">{EVENT_LABEL[i.last_event] ?? i.last_event}</span>
+                  <td title={formatDate(i.last_seen)} className="stack">
+                    {ago(i.last_seen)}
+                    <span className="badge event">{EVENT_LABEL[i.last_event] ?? i.last_event}</span>
                   </td>
                 </tr>
               ))}

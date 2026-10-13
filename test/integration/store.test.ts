@@ -114,6 +114,63 @@ describe('report endpoint and store', () => {
     expect(statuses.at(-1)).toBe(429);
   });
 
+  describe('API key check', () => {
+    const site = { ...base, site_url: 'https://keys.example.ch', plugin: { name: 'Strapi-Supertext-Translation', version: '0.2.0' }, system: { name: 'Strapi' } };
+    const ip = { 'x-forwarded-for': '198.51.100.20' };
+    const find = async () => (await store.listInstallations({ q: 'keys.example.ch' }))[0];
+
+    it('stores the check result of a settings save', async () => {
+      const t = new Date(Date.now() - 60_000).toISOString();
+      await post({ ...site, event: 'settings_saved', api_key_check: { status: 'ok', checked_at: t, http_status: 200 } }, ip);
+      expect(await find()).toMatchObject({ api_key_status: 'ok', api_key_http_status: 200, api_key_error_code: null });
+      expect((await find()).api_key_checked_at?.toISOString()).toBe(new Date(t).toISOString());
+    });
+
+    it('a report without a check (upgrade) keeps the stored result', async () => {
+      await post({ ...site, event: 'upgraded', plugin: { name: 'Strapi-Supertext-Translation', version: '0.3.0' } }, ip);
+      const i = await find();
+      expect(i).toMatchObject({ plugin_version: '0.3.0', api_key_status: 'ok' });
+      expect((await store.installationHistory(i.id))[0].api_key_status).toBeNull();
+    });
+
+    it('a rejected key is a change, with HTTP status and error code', async () => {
+      await post(
+        { ...site, event: 'api_key_check', plugin: { name: 'Strapi-Supertext-Translation', version: '0.3.0' },
+          api_key_check: { status: 'invalid', http_status: 401, error_code: 'INVALID_API_KEY' } },
+        ip,
+      );
+      const i = await find();
+      expect(i).toMatchObject({ api_key_status: 'invalid', api_key_http_status: 401, api_key_error_code: 'INVALID_API_KEY', last_event: 'api_key_check' });
+      const [latest] = await store.installationHistory(i.id);
+      expect(latest).toMatchObject({ event: 'api_key_check', api_key_status: 'invalid', changed: true });
+      // without checked_at the center uses the receive time
+      expect(Math.abs(latest.api_key_checked_at!.getTime() - latest.received_at.getTime())).toBeLessThan(1000);
+    });
+
+    it('an older check doesn\'t overwrite a newer one', async () => {
+      await post({ ...site, event: 'check', plugin: { name: 'Strapi-Supertext-Translation', version: '0.3.0' }, api_key_check: { status: 'ok', checked_at: '2026-01-01T00:00:00Z' } }, ip);
+      expect((await find()).api_key_status).toBe('invalid');
+    });
+
+    it('filters by key status', async () => {
+      // The spec examples posted earlier add a rejected key (www.example.ch) and an unreachable check (cms.example.org).
+      expect((await store.listInstallations({ keyStatus: 'problem' })).map((i) => `${i.site_url} ${i.api_key_status}`).sort()).toEqual([
+        'https://cms.example.org unreachable',
+        'https://keys.example.ch invalid',
+        'https://www.example.ch invalid',
+      ]);
+      expect((await store.listInstallations({ keyStatus: 'ok' })).every((i) => i.api_key_status === 'ok')).toBe(true);
+      expect((await store.listInstallations({ keyStatus: 'unchecked' })).every((i) => i.api_key_status === null)).toBe(true);
+    });
+
+    it('a malformed check is ignored, the report still counts', async () => {
+      const before = (await find()).report_count;
+      const res = await post({ ...site, event: 'settings_saved', plugin: { name: 'Strapi-Supertext-Translation', version: '0.3.0' }, api_key_check: { status: 'BROKEN' } }, ip);
+      expect(res.status).toBe(202);
+      expect(await find()).toMatchObject({ api_key_status: 'invalid', report_count: before + 1 });
+    });
+  });
+
   it('maps installations to clients by hand', async () => {
     const [i] = await store.listInstallations({ q: 'kunde', plugin: 'supertext-wordpress-polylang' });
     const id = await store.ensureClient('Kunde AG');
