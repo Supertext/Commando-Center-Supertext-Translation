@@ -6,3 +6,4 @@ next-env.d.ts
 .env.local
 coverage/
 test-results/
+plugin-health/typescript/dist/

@@ -13,6 +13,8 @@ Plugins report when their settings are saved and after an update. Reporting is o
 
 Next.js and PostgreSQL, deployed on Railway.
 
+The plugin side lives here too: [Supertext Plugin Health](plugin-health/README.md) (TypeScript, PHP, Python, .NET, Java) is the library every plugin bundles to send the reports and answer the ping.
+
 ## Documentation
 
 - [Installation guide](docs/INSTALLATION.md): deploy on Railway, settings, update, troubleshooting

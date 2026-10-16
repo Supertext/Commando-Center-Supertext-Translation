@@ -1,0 +1,73 @@
+name: Plugin Health release
+
+# Publishes a GitHub release "plugin-health-vX.Y.Z" when plugin-health/CHANGELOG.md gets a new
+# "## X.Y.Z — YYYY-MM-DD" section and every language carries that version
+# (plugin-health/scripts/check-versions.sh). Pushes that add no new version do nothing; a version
+# that is already released is skipped; 0.x versions are pre-releases. Plugins bundle a copy
+# (scripts/vendor-plugin-health.sh <tag>); publishing to package registries isn't automated.
+on:
+  push:
+    branches: [main]
+    paths: [plugin-health/CHANGELOG.md, .github/workflows/plugin-health-release.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-health-release
+  cancel-in-progress: false
+
+env:
+  GH_REPO: ${{ github.repository }}
+  GH_TOKEN: ${{ github.token }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # creates the tag and the release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Read the version
+        id: version
+        run: |
+          set -euo pipefail
+          version=$(grep -m1 -oE '^## [0-9]+\.[0-9]+\.[0-9]+' plugin-health/CHANGELOG.md | cut -c4- || true)
+          if [ -z "$version" ]; then
+            echo "No released version in plugin-health/CHANGELOG.md yet, nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          tag="plugin-health-v$version"
+          if gh api "repos/$GH_REPO/releases/tags/$tag" >/dev/null 2>&1; then
+            echo "$tag is already released, nothing to do."
+            echo "release=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          plugin-health/scripts/check-versions.sh
+          awk -v v="$version" '/^## /{ if (p) exit; if (index($0, v) && $0 ~ /^## [0-9]/) { p=1; next } } p' plugin-health/CHANGELOG.md > section.md
+          {
+            if [ "${version%%.*}" = "0" ]; then printf '**Pre-release.** '; fi
+            echo "Supertext Plugin Health $version for TypeScript, PHP, Python, .NET and Java. Usage and bundling: [plugin-health/README.md](https://github.com/$GH_REPO/blob/$tag/plugin-health/README.md)."
+            echo
+            echo "## What's in $version"
+            cat section.md
+          } > notes.md
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "release=true" >> "$GITHUB_OUTPUT"
+
+      - name: Create the release
+        if: steps.version.outputs.release == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          pre=()
+          if [ "${VERSION%%.*}" = "0" ]; then pre=(--prerelease); fi
+          gh release create "$TAG" --target "$GITHUB_SHA" --title "Plugin Health $VERSION" \
+            --notes-file notes.md --latest=false "${pre[@]}"
+          echo "Released https://github.com/$GH_REPO/releases/tag/$TAG"

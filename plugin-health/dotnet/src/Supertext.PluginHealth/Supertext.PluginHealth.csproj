@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>Supertext.PluginHealth</RootNamespace>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <PackageId>Supertext.PluginHealth</PackageId>
+    <!-- Same version in every language (../../CHANGELOG.md) and in PluginHealthInfo.Version. -->
+    <Version>0.1.0</Version>
+    <Authors>Supertext AG</Authors>
+    <Company>Supertext AG</Company>
+    <Description>Supertext Plugin Health: version reports to the Supertext Commando Center, the API key check result and the plugin's ping endpoint answer. No dependencies.</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>supertext;translation;plugin;health</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="/" />
+  </ItemGroup>
+
+</Project>

@@ -24,7 +24,8 @@ The Commando Center collects version reports from the Supertext plugins and show
 | `src/lib/callback.ts` | The callback ping: URL check, address blocklist, the request itself |
 | `src/lib/pinger.ts` | When to ping (throttle, re-ping), stores the result |
 | `src/lib/releases.ts`, `semver.ts` | Latest GitHub release per plugin and version comparison |
-| `spec/` | Protocol schema and test vectors, shared with the SDKs |
+| `spec/` | Protocol schema and test vectors, shared with Plugin Health |
+| `plugin-health/` | **Supertext Plugin Health**, the plugin side of the protocol in TypeScript, PHP, Python, .NET and Java (see below) |
 
 ### Data model
 
@@ -35,7 +36,7 @@ The Commando Center collects version reports from the Supertext plugins and show
 
 ## Report protocol
 
-Every Supertext plugin implements this. The JSON schema is `spec/report-v1.schema.json`; `spec/report-examples.json` and `spec/site-url-vectors.json` are the shared test vectors (the SDKs run them too).
+Every Supertext plugin implements this. The JSON schema is `spec/report-v1.schema.json`; `spec/report-examples.json` and `spec/site-url-vectors.json` are the shared test vectors. Plugins don't implement it themselves: they bundle [Supertext Plugin Health](../plugin-health/README.md), which builds and sends the reports, keeps the state and answers the ping.
 
 ### Request
 
@@ -66,7 +67,7 @@ Content-Type: application/json
 | `plugin.version` | yes | From the plugin's official version source (see the conventions → *Releases*), never a second hardcoded copy. |
 | `system.name`, `system.version` | name yes | The CMS, PIM, shop or application: `WordPress`, `TYPO3`, `Magento`, `Shopify`, … Use the system's own spelling. |
 | `runtime.name`, `runtime.version` | no | `PHP`, `Node.js`, `Python`, `.NET`, `Java` and the full version. |
-| `sdk_version` | no | Version of the bundled Supertext SDK (its `COMMIT` file's tag, if any). |
+| `sdk_version` | no | Version of the bundled Supertext SDK (its `SDK_VERSION` constant). |
 | `api_key_configured` | no | `true`/`false`. Never the key itself. |
 | `callback.url` | no | The plugin's public ping endpoint (see *The callback ping*). Absolute http(s) URL on the site's host or a subdomain of it, at most 500 characters. A report without it keeps the stored one. |
 | `api_key_check.status` | no | Result of the latest automatic key check: `ok`, `invalid` (Supertext answered 401/403), `missing` (no key set), `unreachable` (network error, timeout, HTTP 5xx), `error` (any other answer). Other values are stored as given. |
@@ -103,7 +104,7 @@ The site URL identifies the installation. The center lower-cases scheme and host
 
 ### The API key check
 
-Every plugin checks the API key automatically, so administrators learn about a wrong key when they enter it, not when the first translation fails, and Supertext sees it in the center. The check is the SDK's cost-free `validateApiKey()` (`GET features` against the Supertext API; no translation, nothing billed). It runs whether or not version reporting is on; only the report depends on the setting.
+Every plugin checks the API key automatically, so administrators learn about a wrong key when they enter it, not when the first translation fails, and Supertext sees it in the center. The check is the Supertext SDK's cost-free `checkApiKey()` (`GET features` against the Supertext API; no translation, nothing billed); Plugin Health's reporter calls it through the key checker the plugin passes in. It runs whether or not version reporting is on; only the report depends on the setting.
 
 **When**
 
@@ -142,7 +143,7 @@ So that Supertext can later call installations back (e.g. "translation ready"), 
 - Answer: HTTP 200, `Content-Type: application/json`, `Cache-Control: no-store`, body `{"ok":true,"plugin":"<repo name>","challenge":"<c>"}`. Nothing else: no versions, no settings, no data. The answer is the same for everyone; there is nothing to protect.
 - Only while version reporting is on. With reporting off: HTTP 404 and no `callback` in reports.
 - Hosted apps (Shopify, Wix) and plugins without a server part (the design-file scripts) send no `callback`.
-- `spec/callback-vectors.json` → `endpoint` has the cases the SDKs' handler tests run.
+- `spec/callback-vectors.json` → `endpoint` has the cases Plugin Health's `pingResponse()` tests run.
 
 **The center's ping**
 
@@ -155,7 +156,7 @@ So that Supertext can later call installations back (e.g. "translation ready"), 
 
 ### The setting in the plugins
 
-Every plugin has this setting, **on by default**, next to its other settings (environment variable `SUPERTEXT_VERSION_REPORTS=0` turns it off where settings live in the environment, e.g. Directus, Strapi, Ghost; the plugin's settings file elsewhere). The URL of the center can be overridden for tests with `SUPERTEXT_REPORT_URL`; the default is in the SDK.
+Every plugin has this setting, **on by default**, next to its other settings (environment variable `SUPERTEXT_VERSION_REPORTS=0` turns it off where settings live in the environment, e.g. Directus, Strapi, Ghost; the plugin's settings file elsewhere). The URL of the center can be overridden for tests with `SUPERTEXT_REPORT_URL`; the default is in Plugin Health.
 
 Strings (use the CMS's own word for the system instead of *CMS* where it has one: shop, PIM, …):
 
@@ -167,6 +168,15 @@ Strings (use the CMS's own word for the system instead of *CMS* where it has one
 | it | Inviare le informazioni sulla versione a Supertext | Invia a Supertext l'URL del sito e le versioni di questo plugin, del CMS e dell'ambiente di esecuzione quando salva queste impostazioni e dopo un aggiornamento. In questo modo l'assistenza Supertext vede quale versione utilizza. Non vengono trasmessi contenuti, chiavi API né dati personali. |
 
 Each plugin's `docs/INSTALLATION.md` lists the setting with exactly what is sent and how to turn it off.
+
+## Supertext Plugin Health
+
+`plugin-health/` holds the library every plugin bundles for this protocol, in TypeScript (the reference), PHP, Python, .NET and Java: `InstallationReporter` (reports, state, failure backoff), `reportsEnabled()` and `pingResponse()`. It needs nothing from the Supertext SDK: the plugin passes the SDK's key check (`checkApiKey()` + `apiKeyFingerprint()`) and `SDK_VERSION` in. Usage, API and bundling: [plugin-health/README.md](../plugin-health/README.md).
+
+- Behaviour is pinned by `plugin-health/spec/reporter.json` (the reporter's scenarios, the setting, the ping answers) plus this repo's `spec/`. A protocol change here updates the spec, all five languages, their tests and `plugin-health/CHANGELOG.md` in the same commit.
+- `test/unit/plugin-health.test.ts` replays the reporter scenarios with the TypeScript reference and runs every report body through the center's own parser, so the client and the server can't drift apart.
+- CI: `.github/workflows/plugin-health.yml` (every language, plus a check that all five carry one version: `plugin-health/scripts/check-versions.sh`). Releases: a new `## X.Y.Z — YYYY-MM-DD` section in `plugin-health/CHANGELOG.md` → `.github/workflows/plugin-health-release.yml` tags `plugin-health-vX.Y.Z` (0.x as pre-releases), independent of the center's own releases.
+- Plugins bundle a copy with `scripts/vendor-plugin-health.sh <tag or commit>`; never edit a copy.
 
 ## Local setup
 
@@ -243,7 +253,7 @@ Releases are published by `.github/workflows/release.yml` when the version is of
 
 ## Known limitations / roadmap
 
-- **Plugins:** the report client and the key-check mapping go into the SDKs (TypeScript, PHP, Python, .NET, Java), then into every plugin with the setting and the automatic key check above.
+- **Plugin Health:** published to the package registries (npm, Packagist, PyPI, NuGet, Maven Central); until then plugins bundle a copy.
 - **Callbacks:** the ping only proves reachability. Real callbacks from Supertext will need a signature the plugin can verify (e.g. HMAC with a secret exchanged in the report response) before the plugin acts on them.
 - **Fixed outgoing addresses:** for customers whose firewalls only let known addresses in, the center needs a static egress IP (Railway static outbound IPs) published in the plugins' installation guides.
 - **Scheduled pings:** today pings follow reports and *Ping now*; a daily ping of all installations would catch sites that went dark without reporting.

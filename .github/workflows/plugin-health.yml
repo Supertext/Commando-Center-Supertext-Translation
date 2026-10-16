@@ -1,0 +1,165 @@
+name: Plugin Health
+
+# Supertext Plugin Health (plugin-health/): every language's checks and tests against the shared
+# vectors (plugin-health/spec/ and the center's spec/), and a package build.
+# See plugin-health/README.md → Working on it.
+on:
+  push:
+    branches: [main]
+    paths: ["plugin-health/**", "spec/**", ".github/workflows/plugin-health.yml"]
+  pull_request:
+    paths: ["plugin-health/**", "spec/**", ".github/workflows/plugin-health.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plugin-health-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  typescript:
+    name: TypeScript (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24"]
+    defaults:
+      run:
+        working-directory: plugin-health/typescript
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+      - run: npm pack --dry-run
+
+  php:
+    name: PHP ${{ matrix.php }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ["8.1", "8.2", "8.3", "8.4"]
+    defaults:
+      run:
+        working-directory: plugin-health/php
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: curl, json
+          coverage: none
+          tools: composer
+      - run: composer validate --strict
+      - run: composer update --no-interaction --no-progress
+      - name: Lint
+        run: find src tests -name '*.php' -print0 | xargs -0 -n1 php -l
+      - name: PHPStan
+        run: vendor/bin/phpstan analyse --no-progress
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  php-without-curl:
+    # ext-curl is optional (only the built-in CurlTransport needs it), like in the Supertext SDK.
+    name: PHP without curl
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: plugin-health/php
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: shivammathur/setup-php@eb7c497e18156a6bbabfef1d3a82760b9eda3962 # 2.40.0
+        with:
+          php-version: "8.3"
+          extensions: ":curl"
+          coverage: none
+          tools: composer
+      - name: curl is not loaded
+        run: |
+          if php -m | grep -qi '^curl$'; then echo "curl is still loaded"; exit 1; fi
+      - run: composer update --no-interaction --no-progress
+      - name: PHPUnit
+        run: vendor/bin/phpunit
+
+  python:
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.11", "3.12", "3.13"]
+    defaults:
+      run:
+        working-directory: plugin-health/python
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e '.[test]' build
+      - run: ruff check .
+      - run: ruff format --check .
+      - run: mypy
+      - run: pytest
+      - run: python -m build
+
+  dotnet:
+    name: .NET
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          dotnet-version: "8.0.x"
+      - run: dotnet build plugin-health/dotnet -warnaserror
+      - run: dotnet test plugin-health/dotnet --no-build
+      - run: dotnet pack plugin-health/dotnet/src/Supertext.PluginHealth -c Release -o plugin-health/dotnet/artifacts -warnaserror
+
+  java:
+    name: Java ${{ matrix.java }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: ["17", "21"]
+    defaults:
+      run:
+        working-directory: plugin-health/java
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: plugin-health/java/pom.xml
+      - run: mvn -B -ntp verify
+
+  versions:
+    # All five languages carry one version; plugin-health/CHANGELOG.md names it.
+    name: One version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: plugin-health/scripts/check-versions.sh

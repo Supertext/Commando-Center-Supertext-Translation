@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "supertext-plugin-health"
+version = "0.1.0"
+description = "Supertext Plugin Health: version reports, API key check results and the reachability ping of Supertext plugins, for the Supertext Commando Center."
+readme = "README.md"
+license = "MIT"
+authors = [{ name = "Supertext AG" }]
+requires-python = ">=3.10"
+dependencies = []
+keywords = ["supertext", "plugin", "health", "version-report"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Typing :: Typed",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "mypy>=1.10", "ruff>=0.6"]
+
+[project.urls]
+Homepage = "https://github.com/Supertext/Commando-Center-Supertext-Translation/tree/main/plugin-health"
+Issues = "https://github.com/Supertext/Commando-Center-Supertext-Translation/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+supertext_plugin_health = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+
+[tool.mypy]
+strict = true
+python_version = "3.10"
+files = ["src", "tests"]
+mypy_path = "src"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]

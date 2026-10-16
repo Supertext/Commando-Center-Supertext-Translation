@@ -21,6 +21,48 @@ updates:
     ignore:
       - dependency-name: "node"  # stays on the Node 22 LTS line; move by hand together with @types/node
         update-types: ["version-update:semver-major"]
+  # Supertext Plugin Health (plugin-health/): development dependencies only, the packages have none at runtime.
+  - package-ecosystem: "npm"
+    directory: "/plugin-health/typescript"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "composer"
+    directory: "/plugin-health/php"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "pip"
+    directory: "/plugin-health/python"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "nuget"
+    directory: "/plugin-health/dotnet"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
+  - package-ecosystem: "maven"
+    directory: "/plugin-health/java"
+    schedule:
+      interval: "weekly"
+    groups:
+      minor-and-patch:
+        update-types: ["minor", "patch"]
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

@@ -1,0 +1,40 @@
+{
+  "name": "supertext-plugin-health",
+  "version": "0.1.0",
+  "description": "Supertext Plugin Health: version reports, API key check results and the reachability ping of Supertext plugins, for the Supertext Commando Center.",
+  "license": "MIT",
+  "author": "Supertext AG",
+  "homepage": "https://github.com/Supertext/Commando-Center-Supertext-Translation/tree/main/plugin-health",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Supertext/Commando-Center-Supertext-Translation.git",
+    "directory": "plugin-health/typescript"
+  },
+  "bugs": "https://github.com/Supertext/Commando-Center-Supertext-Translation/issues",
+  "keywords": ["supertext", "plugin", "health", "version-report"],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": ["dist", "README.md"],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "prepack": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "5.9.3",
+    "vitest": "5.0.4"
+  }
+}
