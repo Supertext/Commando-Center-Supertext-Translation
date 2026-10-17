@@ -12,6 +12,7 @@ WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=8080 HOSTNAME=0.0.0.0
 COPY --from=build --chown=node:node /app/.next/standalone ./
 COPY --from=build --chown=node:node /app/.next/static ./.next/static
+COPY --from=build --chown=node:node /app/public ./public
 # The app bundles postgres into its chunks; the migration script needs the package itself (no dependencies).
 COPY --from=build --chown=node:node /app/node_modules/postgres ./node_modules/postgres
 COPY --from=build --chown=node:node /app/migrations ./migrations

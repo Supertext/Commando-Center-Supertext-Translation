@@ -16,6 +16,8 @@ The Commando Center collects version reports from the Supertext plugins and show
 | `src/app/installations/[id]/page.tsx` | One installation: latest state, client mapping, notes, history |
 | `src/app/clients/…` | Clients list and client page |
 | `src/app/actions.ts` | Server actions (login, mapping, edits, deletes) |
+| `src/app/layout.tsx`, `globals.css`, `src/components/main-nav.tsx` | Header, tabs and footer; the stylesheet (see *Look and feel*) |
+| `public/` | `supertext-logo.svg`, `favicon.svg`, `fonts/` (Inter, SIL Open Font License); served as static files without login |
 | `src/lib/report.ts` | Validates a report body |
 | `src/lib/site-url.ts` | Normalizes the site URL, recognizes local and test hosts |
 | `src/lib/db.ts` | All queries |
@@ -33,6 +35,10 @@ The Commando Center collects version reports from the Supertext plugins and show
 - `reports`: every report received (event, versions, the key check if the report had one, `changed` = differs from the previous state). The history on the installation page reads from here.
 - `callback_pings`: every callback ping (time, trigger `report` or `manual`, URL, result, HTTP status, latency, detail); the installation keeps the latest result.
 - `clients`: Supertext customers, created by hand. Names are unique regardless of case. Deleting a client unmaps its installations; deleting an installation deletes its history.
+
+## Look and feel
+
+The pages follow supertext.com, like the HubSpot app: the deep-green header bar (`#003230`, rounded bottom corners) with Supertext's mint logo (`public/supertext-logo.svg`, the website's own SVG) and *Commando Center* next to it, the warm off-white background (`#f7f5f3`), deep-green text and outlines, mint (`#78ffaf`) for the main action, the active tab and good states (*latest*, *key ok*, *reachable*), light grey lines (`#dfe1df`), and pill-shaped buttons, tabs and filters. Text is set in Inter, bundled in `public/fonts/` (variable font, Latin and Latin Extended; SIL Open Font License in `Inter-LICENSE.txt`) and declared with `@font-face` in `src/app/globals.css`, so no font is loaded from elsewhere. Supertext's heading font (ABC Ginto Nord) is licensed and not bundled; headings use Inter Bold. The colours are CSS variables at the top of `globals.css`; there is one light theme. Focus rings are deep green on the page and mint in the header. The favicon is the logo's S mark on deep green. The login page shows the header with the logo only. The Docker image copies `public/` next to the standalone server.
 
 ## Report protocol
 

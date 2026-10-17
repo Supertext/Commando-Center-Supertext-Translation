@@ -4,6 +4,10 @@ All notable changes to this project are documented here. Format: [Keep a Changel
 
 ## [Unreleased]
 
+### Changed
+
+- Supertext's look, as in the HubSpot app: deep-green header with rounded corners and the mint Supertext logo (also on the login page), warm off-white background, mint for the main action, the active tab and good states, pill buttons, tabs and filters, Inter bundled in `public/fonts/` (SIL OFL) and the S mark as favicon. One light theme (the dark variant is gone). Screenshots updated.
+
 ### Added
 
 - **Supertext Plugin Health** (`plugin-health/`): the plugin side of the report protocol in TypeScript, PHP, Python, .NET and Java, moved here from the Supertext SDK (0.1–0.2; removed in SDK 0.3.0). The reporter takes the SDK's key check as a parameter instead of creating an SDK client; the stored state is unchanged. Shared vectors `plugin-health/spec/reporter.json`, CI per language, its own releases (`plugin-health-vX.Y.Z`), and a contract test that the center accepts every report the reference builds.

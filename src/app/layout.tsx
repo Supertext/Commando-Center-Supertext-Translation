@@ -1,6 +1,7 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import Link from 'next/link';
 import './globals.css';
+import MainNav from '@/components/main-nav';
 import { isSignedIn } from '@/lib/session';
 import { APP_REPO, APP_VERSION, appReleaseUrl } from '@/lib/version';
 import { logout } from './actions';
@@ -9,30 +10,33 @@ export const metadata: Metadata = {
   title: 'Supertext Commando Center',
   description: 'Which Supertext plugin and system versions each installation runs.',
   robots: { index: false, follow: false },
+  icons: { icon: { url: '/favicon.svg', type: 'image/svg+xml' } },
 };
+
+export const viewport: Viewport = { themeColor: '#003230' };
 
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const signedIn = await isSignedIn();
   const release = appReleaseUrl();
   return (
     <html lang="en">
+      <head>
+        <link rel="preload" href="/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossOrigin="" />
+      </head>
       <body>
-        {signedIn && (
-          <header className="top">
-            <Link href="/" className="logo">
-              <span className="dot" aria-hidden="true" />
-              Commando Center
-            </Link>
-            <nav aria-label="Main">
-              <Link href="/">Installations</Link>
-              <Link href="/clients">Clients</Link>
-            </nav>
-            <span className="spacer" />
+        <header className="top">
+          <Link href="/" className="brand" aria-label="Supertext Commando Center">
+            <img src="/supertext-logo.svg" alt="Supertext" width={122} height={22} />
+            <span className="for">Commando Center</span>
+          </Link>
+          {signedIn && <MainNav />}
+          <span className="spacer" />
+          {signedIn && (
             <form action={logout}>
               <button type="submit">Sign out</button>
             </form>
-          </header>
-        )}
+          )}
+        </header>
         <main>{children}</main>
         <footer className="bottom">
           Supertext Commando Center{' '}

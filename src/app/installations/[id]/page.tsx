@@ -198,7 +198,7 @@ export default async function InstallationPage({
           </form>
         )}
         {pings.length > 0 && (
-          <div className="table-wrap" style={{ borderTop: '1px solid var(--border)' }}>
+          <div className="table-wrap" style={{ borderTop: '1px solid var(--line)' }}>
             <table>
               <thead>
                 <tr>
