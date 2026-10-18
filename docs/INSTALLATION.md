@@ -30,6 +30,8 @@ All settings are environment variables (Railway service variables).
 | `COMMANDO_PASSWORD` | yes | – | Shared login password, at least 12 characters. Changing it signs everyone out |
 | `GITHUB_TOKEN` | no | – | A GitHub token (no scopes needed for public repositories). Without it, the release lookup is limited to 60 GitHub API requests per hour, which is enough for normal use |
 | `GITHUB_OWNER` | no | `Supertext` | GitHub owner of the plugin repositories |
+| `COMMANDO_PROXY_URL` | no | – | Public base URL of the Supertext translation proxy, for the *Translation proxy* tab (e.g. `https://review-proxy.up.railway.app`) |
+| `COMMANDO_PROXY_TOKEN` | with `COMMANDO_PROXY_URL` | – | The proxy's `REVIEW_USAGE_TOKEN`. Keep it only in Railway's variables |
 | `COMMANDO_TIMEZONE` | no | `Europe/Zurich` | Time zone for dates in the UI |
 | `PORT` | no | `8080` | Port the server listens on (Railway sets it) |
 | `COMMANDO_PING_ALLOW_PRIVATE`, `COMMANDO_PING_HOSTS` | **never in production** | – | Test-only switches for the callback ping (local test servers, docs screenshots). They let the center connect to private addresses; see the developer guide |

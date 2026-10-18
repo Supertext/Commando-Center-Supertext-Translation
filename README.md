@@ -8,6 +8,7 @@ Which Supertext plugin version does each customer site run, on which CMS, shop o
 - whether each site is reachable from the internet (for future callbacks): the center pings the plugin's endpoint
 - the history of each installation: when the plugin, the system or the runtime was updated
 - manual mapping of installations to Supertext clients, with notes
+- which plugins send their translations through the Supertext translation proxy, with their usage
 
 Plugins report when their settings are saved and after an update. Reporting is on by default and can be turned off in each plugin's settings. The key check runs in the plugin; only its result is sent. No content, API keys or personal data are sent.
 

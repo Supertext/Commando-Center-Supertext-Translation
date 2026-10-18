@@ -3,7 +3,8 @@
 //   1. Start the center against a fresh database, pointing GitHub release lookups and the
 //      sample sites' ping endpoints at the stand-in this script starts on port 8766
 //      (COMMANDO_PING_* are test-only switches, never set them in production):
-//        GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PING_ALLOW_PRIVATE=1 \
+//        GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PROXY_URL=http://127.0.0.1:8766 COMMANDO_PROXY_TOKEN=docs-proxy-token \
+//        COMMANDO_PING_ALLOW_PRIVATE=1 \
 //        COMMANDO_PING_HOSTS="$(node scripts/docs-screenshots.mjs --ping-hosts)" \
 //        COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
 //   2. COMMANDO_URL=http://127.0.0.1:3000 COMMANDO_PASSWORD=… npm run docs:screenshots
@@ -40,6 +41,16 @@ const RELEASES = {
   'Strapi-Supertext-Translation': '0.2.0',
   'Contao-Supertext-Translation': '0.3.1',
 };
+const PROXY_USAGE = {
+  schema: 1,
+  generatedAt: new Date().toISOString(),
+  integrations: [
+    { tenant: 'a1'.repeat(32), tenantLabel: 'Alpenblick Hotels AG', plugin: 'supertext-wordpress-polylang', pluginVersion: '2.1.0', sdk: 'php', keyChecks: 3, uploads: 128, memoryAnswers: 74, firstSeenAt: new Date(Date.now() - 9 * 86400e3).toISOString(), lastSeenAt: new Date(Date.now() - 12 * 60e3).toISOString() },
+    { tenant: 'b2'.repeat(32), tenantLabel: 'Bergbahnen Muster', plugin: 'Typo3-Supertext-Translation', pluginVersion: '0.3.0', sdk: 'php', keyChecks: 1, uploads: 41, memoryAnswers: 9, firstSeenAt: new Date(Date.now() - 4 * 86400e3).toISOString(), lastSeenAt: new Date(Date.now() - 3 * 3600e3).toISOString() },
+    { tenant: 'c3'.repeat(32), tenantLabel: '', plugin: 'Strapi-Supertext-Translation', pluginVersion: '0.2.0', sdk: 'typescript', keyChecks: 2, uploads: 6, memoryAnswers: 0, firstSeenAt: new Date(Date.now() - 86400e3).toISOString(), lastSeenAt: new Date(Date.now() - 86400e3 + 600e3).toISOString() },
+  ],
+};
+
 const standIn = http
   .createServer((req, res) => {
     // Ping endpoints of the sample sites, by Host header.
@@ -57,6 +68,12 @@ const standIn = http
       const plugin = host.startsWith('www.alpenblick') ? 'supertext-wordpress-polylang' : 'Typo3-Supertext-Translation';
       res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
       return res.end(JSON.stringify({ ok: true, plugin, challenge: u.searchParams.get('challenge') }));
+    }
+    // Stand-in for the translation proxy's usage API (invented sample data).
+    if (req.url === '/api/usage') {
+      const ok = req.headers.authorization === 'Bearer docs-proxy-token';
+      res.writeHead(ok ? 200 : 401, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify(ok ? PROXY_USAGE : { error: 'unauthorized' }));
     }
     const m = req.url?.match(/^\/repos\/[^/]+\/([^/]+)\/releases/);
     const v = m && RELEASES[decodeURIComponent(m[1])];
@@ -154,6 +171,9 @@ await page.goto(`${BASE}/clients`);
 await shot('clients.png', { clip: { x: 0, y: 0, width: 1360, height: 360 } });
 await Promise.all([page.waitForURL(/\/clients\/\d+$/), page.click('a:has-text("Alpenblick Hotels AG")')]);
 await shot('client.png', { fullPage: true });
+
+await page.goto(`${BASE}/proxy`);
+await shot('proxy.png', { clip: { x: 0, y: 0, width: 1360, height: 520 } });
 
 await browser.close();
 standIn.close();

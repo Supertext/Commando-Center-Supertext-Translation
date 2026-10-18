@@ -6,6 +6,7 @@ import { usePathname } from 'next/navigation';
 const TABS = [
   { href: '/', label: 'Installations', match: (p: string) => p === '/' || p.startsWith('/installations') },
   { href: '/clients', label: 'Clients', match: (p: string) => p.startsWith('/clients') },
+  { href: '/proxy', label: 'Translation proxy', match: (p: string) => p.startsWith('/proxy') },
 ];
 
 /** The header's tabs; the current section is the mint pill. */

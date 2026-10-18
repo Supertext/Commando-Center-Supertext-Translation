@@ -102,6 +102,14 @@ The client page lists the client's installations with their versions, and lets y
 
 ![Client page: the client's installations with plugin, system and runtime versions, then name and notes](images/client.png)
 
+## Translation proxy
+
+*Translation proxy* shows which plugins send their translations through the Supertext translation proxy: per customer (one Supertext API key, labelled in the proxy) the plugin, its version (with the same *latest* / *update available* status as the installations), the SDK, how many documents it uploaded, how many of them the proxy answered from its translation memory without calling Supertext, its key checks and its first and last request. The numbers are at most a minute old. Translations, corrections and review links are managed in the proxy itself, not here.
+
+![Translation proxy tab: three plugins with their customers, uploads and how many were answered from the memory](images/proxy.png)
+
+If the tab says it isn't connected, `COMMANDO_PROXY_URL` and `COMMANDO_PROXY_TOKEN` are missing (see the installation guide).
+
 ## Delete
 
 - **Delete installation** (installation page) removes it and its history, for example a test site or a site with an outdated URL. If the plugin reports again, it comes back as a new installation.

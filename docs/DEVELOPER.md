@@ -26,6 +26,7 @@ The Commando Center collects version reports from the Supertext plugins and show
 | `src/lib/callback.ts` | The callback ping: URL check, address blocklist, the request itself |
 | `src/lib/pinger.ts` | When to ping (throttle, re-ping), stores the result |
 | `src/lib/releases.ts`, `semver.ts` | Latest GitHub release per plugin and version comparison |
+| `src/lib/proxy-usage.ts`, `src/app/proxy/page.tsx` | *Translation proxy* tab: which plugins use the translation proxy (see below) |
 | `spec/` | Protocol schema and test vectors, shared with Plugin Health |
 | `plugin-health/` | **Supertext Plugin Health**, the plugin side of the protocol in TypeScript, PHP, Python, .NET and Java (see below) |
 
@@ -175,6 +176,14 @@ Strings (use the CMS's own word for the system instead of *CMS* where it has one
 
 Each plugin's `docs/INSTALLATION.md` lists the setting with exactly what is sent and how to turn it off.
 
+## Translation proxy usage
+
+The *Translation proxy* tab shows which plugins send their translations through the Supertext translation proxy ([Localization-Review-Supertext-Translation](https://github.com/Supertext/Localization-Review-Supertext-Translation)), per proxy tenant (one Supertext API key, labelled in the proxy): plugin and version (compared with the latest release like the installations), SDK, uploads, uploads the proxy answered from its memory, key checks, first and last request. The center only shows usage: translations and review links stay in the proxy.
+
+- Read server-side from the proxy's `GET /api/usage` (`Authorization: Bearer <COMMANDO_PROXY_TOKEN>`, the proxy's `REVIEW_USAGE_TOKEN`; schema in the proxy's developer guide → *Usage API*), 5 s timeout, no redirects, 2 MB cap, invalid entries dropped, cached for a minute in memory.
+- `COMMANDO_PROXY_URL` is set by staff, like `GITHUB_API_URL`; it never comes from a report, so the callback ping's guard doesn't apply. Use the proxy's public URL.
+- The proxy knows plugins by API key, not by site URL, so its rows aren't joined with the installations. Joining them would need the plugins to report their key fingerprint (a protocol change in Plugin Health).
+
 ## Supertext Plugin Health
 
 `plugin-health/` holds the library every plugin bundles for this protocol, in TypeScript (the reference), PHP, Python, .NET and Java: `InstallationReporter` (reports, state, failure backoff), `reportsEnabled()` and `pingResponse()`. It needs nothing from the Supertext SDK: the plugin passes the SDK's key check (`checkApiKey()` + `apiKeyFingerprint()`) and `SDK_VERSION` in. Usage, API and bundling: [plugin-health/README.md](../plugin-health/README.md).
@@ -217,11 +226,11 @@ CI (`.github/workflows/ci.yml`) runs all of them on every push and pull request,
 
 ## Docs screenshots
 
-`npm run docs:screenshots` fills an empty center with invented sample sites and clients and saves the screenshots in `docs/images/`. It starts a stand-in on port 8766 for the GitHub releases API and for the sample sites' ping endpoints, so start the center against it first (with a fresh database and a fresh process: the ping throttle lives in memory):
+`npm run docs:screenshots` fills an empty center with invented sample sites and clients and saves the screenshots in `docs/images/`. It starts a stand-in on port 8766 for the GitHub releases API, the sample sites' ping endpoints and the translation proxy's usage API, so start the center against it first (with a fresh database and a fresh process: the ping throttle lives in memory):
 
 ```bash
-GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PING_ALLOW_PRIVATE=1 \
-COMMANDO_PING_HOSTS="$(node scripts/docs-screenshots.mjs --ping-hosts)" \
+GITHUB_API_URL=http://127.0.0.1:8766 COMMANDO_PROXY_URL=http://127.0.0.1:8766 COMMANDO_PROXY_TOKEN=docs-proxy-token \
+COMMANDO_PING_ALLOW_PRIVATE=1 COMMANDO_PING_HOSTS="$(node scripts/docs-screenshots.mjs --ping-hosts)" \
 COMMANDO_DB_NAME=commando_docs COMMANDO_PASSWORD=… npm run dev
 COMMANDO_URL=http://127.0.0.1:3000 COMMANDO_PASSWORD=… npm run docs:screenshots
 ```
